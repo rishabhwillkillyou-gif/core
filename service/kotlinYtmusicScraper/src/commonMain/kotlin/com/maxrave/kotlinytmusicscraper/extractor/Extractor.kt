@@ -16,4 +16,10 @@ expect class Extractor() {
     ): DownloadProgress
 
     fun newPipePlayer(videoId: String): List<Pair<Int, String>>
+
+    /** Standard YouTube search, independent of YouTube Music WEB_REMIX search. */
+    fun searchYouTube(
+        query: String,
+        limit: Int,
+    ): List<YouTubeSearchItem>
 }
