@@ -39,7 +39,7 @@ object ListeningTasteBuilder {
             val likedBonus = if (song?.liked == true || song?.likeStatus == "LIKE") 0.60 else 0.0
             val knownDuration = song?.durationSeconds?.takeIf { it > 0 }
             val repeatBonus =
-                if (knownDuration != null && (song.totalPlayTime >= knownDuration.toLong() * 2L)) {
+                if (knownDuration != null && ((song?.totalPlayTime ?: 0L) >= knownDuration.toLong() * 2L)) {
                     0.20
                 } else {
                     0.0
