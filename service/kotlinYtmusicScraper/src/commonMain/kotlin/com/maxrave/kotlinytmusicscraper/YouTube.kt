@@ -5,6 +5,7 @@ import com.maxrave.common.ITAG
 import com.maxrave.kotlinytmusicscraper.YouTube.Companion.DEFAULT_VISITOR_DATA
 import com.maxrave.kotlinytmusicscraper.extension.toListFormat
 import com.maxrave.kotlinytmusicscraper.extractor.ExtractSource
+import com.maxrave.kotlinytmusicscraper.extractor.YouTubeSearchItem
 import com.maxrave.kotlinytmusicscraper.models.AccountInfo
 import com.maxrave.kotlinytmusicscraper.models.AlbumItem
 import com.maxrave.kotlinytmusicscraper.models.Artist
@@ -259,6 +260,15 @@ class YouTube {
             "https://yapi.vyper.me",
             "https://pipedapi-libre.kavin.rocks",
         )
+
+    /**
+     * Standard youtube.com search through the bundled BravePipe/NewPipe extractor.
+     * Used only when YouTube Music search is sparse or unavailable.
+     */
+    fun searchYouTubeWeb(
+        query: String,
+        limit: Int = 30,
+    ): List<YouTubeSearchItem> = ytMusic.searchYouTubeWeb(query, limit)
 
     /**
      * Search for a song, album, artist, playlist, etc.
