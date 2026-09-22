@@ -9,6 +9,8 @@ import dev.maxrave.pipepipe.extractor.services.youtube.YoutubeApiDecoder
 import dev.maxrave.pipepipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.NewPipe as BraveNewPipe
 import org.schabi.newpipe.extractor.ServiceList as BraveServiceList
+import org.schabi.newpipe.extractor.search.SearchInfo as BraveSearchInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem as BraveStreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamInfo as BraveStreamInfo
 
 private const val TAG = "Extractor"
@@ -28,6 +30,61 @@ actual class Extractor {
 
     actual fun logIn(cookie: String?) {
         ServiceList.YouTube.tokens = cookie ?: ""
+    }
+
+    /**
+     * Independent fallback search using standard youtube.com through BravePipe/NewPipe.
+     */
+    actual fun searchYouTube(
+        query: String,
+        limit: Int,
+    ): List<YouTubeSearchItem> =
+        runCatching {
+            if (query.isBlank() || limit <= 0) return@runCatching emptyList()
+            val service = BraveServiceList.YouTube
+            val handler = service.searchQHFactory.fromQuery(query)
+            BraveSearchInfo
+                .getInfo(service, handler)
+                .relatedItems
+                .filterIsInstance<BraveStreamInfoItem>()
+                .asSequence()
+                .mapNotNull { item ->
+                    val videoId = extractYouTubeVideoId(item.url) ?: return@mapNotNull null
+                    YouTubeSearchItem(
+                        videoId = videoId,
+                        title = item.name,
+                        uploaderName = item.uploaderName,
+                        durationSeconds =
+                            item.duration
+                                .takeIf { it >= 0L }
+                                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                                ?.toInt(),
+                        thumbnailUrl =
+                            item.thumbnails
+                                .maxByOrNull { image ->
+                                    val width = image.width.coerceAtLeast(1)
+                                    val height = image.height.coerceAtLeast(1)
+                                    width.toLong() * height.toLong()
+                                }
+                                ?.url,
+                        viewCount = item.viewCount.takeIf { it >= 0L },
+                    )
+                }
+                .distinctBy { it.videoId }
+                .take(limit)
+                .toList()
+        }.onFailure {
+            Logger.w(TAG, "BravePipe YouTube search failed for '$query': ${it.message}")
+        }.getOrElse { emptyList() }
+
+    private fun extractYouTubeVideoId(url: String): String? {
+        val patterns =
+            listOf(
+                Regex("[?&]v=([A-Za-z0-9_-]{11})"),
+                Regex("youtu\\.be/([A-Za-z0-9_-]{11})"),
+                Regex("/shorts/([A-Za-z0-9_-]{11})"),
+            )
+        return patterns.firstNotNullOfOrNull { regex -> regex.find(url)?.groupValues?.getOrNull(1) }
     }
 
     actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> {
