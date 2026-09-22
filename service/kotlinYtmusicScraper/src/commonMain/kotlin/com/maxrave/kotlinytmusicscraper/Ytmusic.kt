@@ -2,6 +2,7 @@ package com.maxrave.kotlinytmusicscraper
 
 import com.maxrave.domain.extension.now
 import com.maxrave.kotlinytmusicscraper.extractor.Extractor
+import com.maxrave.kotlinytmusicscraper.extractor.YouTubeSearchItem
 import com.maxrave.kotlinytmusicscraper.models.Context
 import com.maxrave.kotlinytmusicscraper.models.SongItem
 import com.maxrave.kotlinytmusicscraper.models.WatchEndpoint
@@ -158,6 +159,11 @@ class Ytmusic {
     init {
         extractor.init()
     }
+
+    fun searchYouTubeWeb(
+        query: String,
+        limit: Int,
+    ): List<YouTubeSearchItem> = extractor.searchYouTube(query, limit)
 
     @OptIn(ExperimentalSerializationApi::class)
     private fun createClient() =
