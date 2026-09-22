@@ -14,16 +14,22 @@ import com.maxrave.domain.data.model.searchResult.albums.AlbumsResult
 import com.maxrave.domain.data.model.searchResult.artists.ArtistsResult
 import com.maxrave.domain.data.model.searchResult.playlists.PlaylistsResult
 import com.maxrave.domain.data.model.searchResult.songs.SongsResult
+import com.maxrave.domain.data.model.searchResult.songs.Artist
+import com.maxrave.domain.data.model.searchResult.songs.Thumbnail
 import com.maxrave.domain.data.model.searchResult.videos.VideosResult
 import com.maxrave.domain.repository.SearchRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.kotlinytmusicscraper.YouTube
+import com.maxrave.kotlinytmusicscraper.extractor.YouTubeSearchItem
 import com.maxrave.logger.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+
+private const val SEARCH_WEB_FALLBACK_THRESHOLD = 8
+private const val SEARCH_WEB_FALLBACK_LIMIT = 30
 
 internal class SearchRepositoryImpl(
     private val localDataSource: LocalDataSource,
@@ -72,10 +78,28 @@ internal class SearchRepositoryImpl(
                                 }
                         }
 
+                        if (listSongs.size < SEARCH_WEB_FALLBACK_THRESHOLD) {
+                            val seen = listSongs.mapTo(mutableSetOf()) { it.videoId }
+                            youTube
+                                .searchYouTubeWeb(query, SEARCH_WEB_FALLBACK_LIMIT)
+                                .asSequence()
+                                .filter { seen.add(it.videoId) }
+                                .map { it.toSongSearchResult() }
+                                .forEach(listSongs::add)
+                        }
                         emit(Resource.Success<ArrayList<SongsResult>>(listSongs))
                     }.onFailure { e ->
-                        Logger.d("Search", "Error: ${e.message}")
-                        emit(Resource.Error<ArrayList<SongsResult>>(e.message.toString()))
+                        Logger.d("Search", "YouTube Music song search failed: ${e.message}")
+                        val fallback =
+                            youTube
+                                .searchYouTubeWeb(query, SEARCH_WEB_FALLBACK_LIMIT)
+                                .map { it.toSongSearchResult() }
+                                .toCollection(arrayListOf())
+                        if (fallback.isNotEmpty()) {
+                            emit(Resource.Success<ArrayList<SongsResult>>(fallback))
+                        } else {
+                            emit(Resource.Error<ArrayList<SongsResult>>(e.message.toString()))
+                        }
                     }
             }
         }.flowOn(Dispatchers.IO)
@@ -108,10 +132,28 @@ internal class SearchRepositoryImpl(
                                 }
                         }
 
+                        if (listSongs.size < SEARCH_WEB_FALLBACK_THRESHOLD) {
+                            val seen = listSongs.mapTo(mutableSetOf()) { it.videoId }
+                            youTube
+                                .searchYouTubeWeb(query, SEARCH_WEB_FALLBACK_LIMIT)
+                                .asSequence()
+                                .filter { seen.add(it.videoId) }
+                                .map { it.toVideoSearchResult() }
+                                .forEach(listSongs::add)
+                        }
                         emit(Resource.Success<ArrayList<VideosResult>>(listSongs))
                     }.onFailure { e ->
-                        Logger.d("Search", "Error: ${e.message}")
-                        emit(Resource.Error<ArrayList<VideosResult>>(e.message.toString()))
+                        Logger.d("Search", "YouTube Music video search failed: ${e.message}")
+                        val fallback =
+                            youTube
+                                .searchYouTubeWeb(query, SEARCH_WEB_FALLBACK_LIMIT)
+                                .map { it.toVideoSearchResult() }
+                                .toCollection(arrayListOf())
+                        if (fallback.isNotEmpty()) {
+                            emit(Resource.Success<ArrayList<VideosResult>>(fallback))
+                        } else {
+                            emit(Resource.Error<ArrayList<VideosResult>>(e.message.toString()))
+                        }
                     }
             }
         }.flowOn(Dispatchers.IO)
@@ -306,4 +348,47 @@ internal class SearchRepositoryImpl(
                     }
             }
         }.flowOn(Dispatchers.IO)
+}
+
+private fun YouTubeSearchItem.toSongSearchResult(): SongsResult =
+    SongsResult(
+        album = null,
+        artists = uploaderName?.takeIf { it.isNotBlank() }?.let { listOf(Artist(id = null, name = it)) },
+        category = "YouTube",
+        duration = durationSeconds?.toClockDuration(),
+        durationSeconds = durationSeconds,
+        feedbackTokens = null,
+        isExplicit = false,
+        resultType = "Song",
+        thumbnails = thumbnailUrl?.let { listOf(Thumbnail(height = 0, url = it, width = 0)) },
+        title = title,
+        videoId = videoId,
+        videoType = null,
+        year = "",
+    )
+
+private fun YouTubeSearchItem.toVideoSearchResult(): VideosResult =
+    VideosResult(
+        artists = uploaderName?.takeIf { it.isNotBlank() }?.let { listOf(Artist(id = null, name = it)) },
+        category = "YouTube",
+        duration = durationSeconds?.toClockDuration(),
+        durationSeconds = durationSeconds,
+        resultType = "Video",
+        thumbnails = thumbnailUrl?.let { listOf(Thumbnail(height = 0, url = it, width = 0)) },
+        title = title,
+        videoId = videoId,
+        videoType = null,
+        views = viewCount?.toString(),
+        year = "",
+    )
+
+private fun Int.toClockDuration(): String {
+    val hours = this / 3600
+    val minutes = (this % 3600) / 60
+    val seconds = this % 60
+    return if (hours > 0) {
+        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+    } else {
+        "$minutes:${seconds.toString().padStart(2, '0')}"
+    }
 }
