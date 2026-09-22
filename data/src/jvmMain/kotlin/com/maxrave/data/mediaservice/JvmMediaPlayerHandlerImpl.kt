@@ -59,6 +59,8 @@ import com.maxrave.domain.mediaservice.handler.SleepTimerState
 import com.maxrave.domain.mediaservice.handler.ToastType
 import com.maxrave.domain.mediaservice.player.MediaPlayerInterface
 import com.maxrave.domain.mediaservice.player.MediaPlayerListener
+import com.maxrave.domain.recommendation.ListeningTasteBuilder
+import com.maxrave.domain.recommendation.PersonalRadioRanker
 import com.maxrave.domain.repository.AnalyticsRepository
 import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.SongRepository
@@ -1769,12 +1771,54 @@ class JvmMediaPlayerHandlerImpl(
             songRepository.getRelatedData(videoId).collect { response ->
                 when (response) {
                     is Resource.Success -> {
-                        loadMoreCatalog(response.data?.first?.toCollection(arrayListOf()) ?: arrayListOf())
+                        val upstream = response.data?.first.orEmpty()
+                        val seed =
+                            queueData.value.data.listTracks
+                                ?.lastOrNull { it.videoId == videoId }
+                                ?: queueData.value.data.listTracks?.lastOrNull()
+
+                        val ranked =
+                            if (seed != null && upstream.isNotEmpty()) {
+                                val events =
+                                    analyticsRepository
+                                        .getPlaybackEventsByOffset(offset = 0, limit = 200)
+                                        .lastOrNull()
+                                        .orEmpty()
+                                val songIds =
+                                    (events.asSequence().map { it.videoId } + upstream.asSequence().map { it.videoId })
+                                        .distinct()
+                                        .toList()
+                                val songsById =
+                                    songRepository
+                                        .getSongsByListVideoId(songIds)
+                                        .lastOrNull()
+                                        .orEmpty()
+                                        .associateBy { it.videoId }
+                                val taste = ListeningTasteBuilder.build(events, songsById)
+                                val size = upstream.size.coerceAtLeast(1)
+                                val candidates =
+                                    upstream.mapIndexed { index, track ->
+                                        PersonalRadioRanker.Candidate(
+                                            track = track,
+                                            providerSimilarity = (1.0 - index.toDouble() / size.toDouble()).coerceAtLeast(0.35),
+                                            providerRank = index,
+                                        )
+                                    }
+                                PersonalRadioRanker()
+                                    .rank(seed = seed, candidates = candidates, taste = taste, limit = 15)
+                                    .map { it.track }
+                            } else {
+                                upstream.take(15)
+                            }
+
+                        loadMoreCatalog(ranked.toCollection(arrayListOf()))
                         _queueData.update {
                             it.copy(
                                 data =
                                     it.data.copy(
-                                        continuation = response.data?.second,
+                                        // Short evolving batches: Endless Queue reseeds from the
+                                        // last recommendation instead of appending a stale page.
+                                        continuation = null,
                                     ),
                             )
                         }
