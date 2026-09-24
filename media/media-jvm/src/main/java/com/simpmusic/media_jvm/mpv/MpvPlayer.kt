@@ -261,19 +261,28 @@ class MpvPlayer private constructor(
             // VLC "--network-caching=10000" / ":network-caching=15000".
             option("cache", "yes")
             option("cache-secs", networkCacheSeconds.toString())
+            // If the cache ever does run dry, wait for a few seconds of reserve before resuming.
+            // This trades one short buffering event for repeated stop-start micro-stalls.
+            option("cache-pause", "yes")
+            option("cache-pause-wait", "4")
 
             // cache-secs alone is only a target; the hard ceiling is demuxer-max-bytes, whose
             // default is 150 MB forward plus a back-buffer. Two handles exist at once during a
             // crossfade, so the default lets the demuxer alone account for several hundred MB of
             // resident memory. 32 MB covers cache-secs of audio comfortably — a 320 kbps stream
             // is 2.4 MB per minute — and mpv simply refills more often if it ever runs short.
-            option("demuxer-max-bytes", (32 * 1024 * 1024).toString())
+            option("demuxer-max-bytes", (64 * 1024 * 1024).toString())
             option("demuxer-max-back-bytes", (8 * 1024 * 1024).toString())
 
             // VLC ":http-reconnect".
             option(
                 "stream-lavf-o",
-                "reconnect=1,reconnect_streamed=1,reconnect_delay_max=30",
+                "reconnect=1," +
+                    "reconnect_streamed=1," +
+                    "reconnect_on_network_error=1," +
+                    "reconnect_max_retries=8," +
+                    "reconnect_delay_max=3," +
+                    "reconnect_delay_total_max=20",
             )
 
             // ALWAYS pin the video output explicitly, on every branch.
