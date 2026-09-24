@@ -35,8 +35,8 @@ replace_once("app/lib/main.dart", "                  initialTab: HomeTab.receive
 
 replace_all("app/android/app/src/main/AndroidManifest.xml", 'android:label="LocalSend"', 'android:label="RishiLink"')
 replace_once("app/windows/runner/main.cpp", '  if (!window.Create(L"LocalSend", origin, size)) {', '  if (!window.Create(L"RishiLink", origin, size)) {')
-replace_once("app/windows/runner/Runner.rc", '            VALUE "FileDescription", "LocalSend" "\\\\0"', '            VALUE "FileDescription", "RishiLink" "\\\\0"')
-replace_once("app/windows/runner/Runner.rc", '            VALUE "ProductName", "LocalSend" "\\\\0"', '            VALUE "ProductName", "RishiLink" "\\\\0"')
+replace_once("app/windows/runner/Runner.rc", '"FileDescription", "LocalSend"', '"FileDescription", "RishiLink"')
+replace_once("app/windows/runner/Runner.rc", '"ProductName", "LocalSend"', '"ProductName", "RishiLink"')
 replace_once("app/lib/util/native/context_menu_helper.dart", "const _windowsFileName = 'LocalSend';", "const _windowsFileName = 'RishiLink';")
 
 for p in (ROOT / "app/assets/i18n").glob("*.json"):
