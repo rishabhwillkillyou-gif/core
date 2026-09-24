@@ -9,7 +9,6 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -164,7 +163,7 @@ private class WindowsSafePreferencesDataStore(
                         }
                     tmp.delete()
                 } catch (directFailure: Exception) {
-                    directFailure.addSuppressed(lastFailure)
+                    lastFailure?.let(directFailure::addSuppressed)
                     throw directFailure
                 }
             }
