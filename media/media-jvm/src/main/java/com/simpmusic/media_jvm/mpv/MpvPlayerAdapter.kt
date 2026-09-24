@@ -1479,8 +1479,11 @@ class MpvPlayerAdapter(
      * headless handle with `vid=no`/`vo=null`, so no video stream is ever decoded or fetched.
      */
     private fun createMediaPlayerInternal(source: PlayableSource): MpvPlayer? {
-        // VLC used --network-caching=10000 globally and :network-caching=15000 for video.
-        val cacheSeconds = if (source.isVideo) 15 else 10
+        // YouTube/CDN connections can briefly stall even on a healthy broadband link.
+        // Ten seconds was too easy to exhaust on Windows, producing audible mid-track pauses while
+        // mpv refilled. Keep a much deeper reserve for audio, with a slightly smaller video target
+        // to avoid excessive memory use when both audio and video are buffered.
+        val cacheSeconds = if (source.isVideo) 30 else 45
         return if (source.isVideo) {
             Logger.d(TAG, "Creating video player with software render surface")
             MpvPlayer.create(audioOnly = false, networkCacheSeconds = cacheSeconds)
