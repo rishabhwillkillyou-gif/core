@@ -63,13 +63,19 @@ replace_once(
 replace_once(
     "app/lib/pages/tabs/send_tab.dart",
     "import 'package:collection/collection.dart';",
-    "import 'dart:io';\\n\\nimport 'package:collection/collection.dart';\\nimport 'package:desktop_drop/desktop_drop.dart';",
+    """import 'dart:io';
+
+import 'package:collection/collection.dart';
+import 'package:desktop_drop/desktop_drop.dart';""",
 )
 
 replace_once(
     "app/lib/pages/tabs/send_tab.dart",
-    "import 'package:localsend_app/util/favorites.dart';\\nimport 'package:localsend_app/util/native/file_picker.dart';",
-    "import 'package:localsend_app/util/favorites.dart';\\nimport 'package:localsend_app/util/native/cross_file_converters.dart';\\nimport 'package:localsend_app/util/native/file_picker.dart';",
+    """import 'package:localsend_app/util/favorites.dart';
+import 'package:localsend_app/util/native/file_picker.dart';""",
+    """import 'package:localsend_app/util/favorites.dart';
+import 'package:localsend_app/util/native/cross_file_converters.dart';
+import 'package:localsend_app/util/native/file_picker.dart';""",
 )
 
 replace_once(
