@@ -39,6 +39,14 @@ replace_once("app/windows/runner/Runner.rc", '"FileDescription", "LocalSend"', '
 replace_once("app/windows/runner/Runner.rc", '"ProductName", "LocalSend"', '"ProductName", "RishiLink"')
 replace_once("app/lib/util/native/context_menu_helper.dart", "const _windowsFileName = 'LocalSend';", "const _windowsFileName = 'RishiLink';")
 
+# Upstream compatibility fix: the pinned revision generated AppLocale.ky but
+# had not yet added Kyrgyz to the exhaustive locale-name switch.
+replace_once(
+    "app/lib/util/i18n.dart",
+    "      AppLocale.ko => '한국어',\n      AppLocale.lo => 'ລາວ',",
+    "      AppLocale.ko => '한국어',\n      AppLocale.ky => 'Кыргызча',\n      AppLocale.lo => 'ລາວ',",
+)
+
 for p in (ROOT / "app/assets/i18n").glob("*.json"):
     s = p.read_text(encoding="utf-8")
     if '"appName": "LocalSend"' in s:
