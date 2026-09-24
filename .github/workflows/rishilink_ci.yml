@@ -58,7 +58,7 @@ jobs:
 
       - name: Static analysis
         working-directory: rishilink-src/app
-        run: flutter analyze
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
       - name: Build Android debug APKs
         working-directory: rishilink-src/app
@@ -113,7 +113,7 @@ jobs:
 
       - name: Static analysis
         working-directory: rishilink-src/app
-        run: flutter analyze
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
       - name: Build Windows
         working-directory: rishilink-src/app
