@@ -50,7 +50,7 @@ jobs:
 
           sed -i 's#coreFilePath = "libfceumm_libretro_android.so"#coreFilePath = applicationInfo.nativeLibraryDir + "/libfceumm_libretro_android.so"#' "$GAME"
 
-          python3 -c 'from pathlib import Path; p=Path("'"$GAME"'"); s=p.read_text(); marker="        storage = GameStorage(this, romBytes)\n"; insert="""        storage = GameStorage(this, romBytes)\n        val privateRom = java.io.File(filesDir, "roms/" + storage.gameId + ".nes").apply {\n            parentFile?.mkdirs()\n            writeBytes(romBytes)\n        }\n"""; s=s.replace(marker, insert); s=s.replace("            gameFileBytes = romBytes", "            gameFilePath = privateRom.absolutePath"); p.write_text(s)'
+          python3 -c 'from pathlib import Path; p=Path("'"$GAME"'"); s=p.read_text(); s=s.replace("    private lateinit var romBytes: ByteArray", "    private lateinit var romBytes: ByteArray\n    private lateinit var romFile: java.io.File"); marker="        storage = GameStorage(this, romBytes)\n"; insert="""        storage = GameStorage(this, romBytes)\n        romFile = java.io.File(filesDir, "roms/" + storage.gameId + ".nes").apply {\n            parentFile?.mkdirs()\n            writeBytes(romBytes)\n        }\n"""; s=s.replace(marker, insert); s=s.replace("            gameFileBytes = romBytes", "            gameFilePath = romFile.absolutePath"); p.write_text(s)'
 
           sed -i 's/preferLowLatencyAudio = true/preferLowLatencyAudio = false/' "$GAME"
 
@@ -61,7 +61,7 @@ jobs:
               "https://raw.githubusercontent.com/Swordfish90/LemuroidCores/master/lemuroid_core_fceumm/src/main/jniLibs/$ABI/libfceumm_libretro_android.so"
           done
 
-          grep -n -E "coreFilePath|gameFilePath|privateRom|preferLowLatencyAudio" "$GAME"
+          grep -n -E "coreFilePath|gameFilePath|romFile|preferLowLatencyAudio" "$GAME"
           ls -lh /tmp/nes-source/NESMultiplayerV1/app/src/main/jniLibs/arm64-v8a/libfceumm_libretro_android.so
 
       - name: Build debug APK
