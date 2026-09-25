@@ -46,6 +46,66 @@ jobs:
           test -f /tmp/nes-source/NESMultiplayerV1/app/build.gradle.kts
           test -f /tmp/nes-source/NESMultiplayerV1/app/src/main/java/com/rishabh/nesv1/ui/GameActivity.kt
 
+      - name: Patch emulator launch path for V1.1
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("/tmp/nes-source/NESMultiplayerV1/app/src/main/java/com/rishabh/nesv1/ui/GameActivity.kt")
+          s = p.read_text()
+
+          s = s.replace(
+              'import androidx.appcompat.app.AppCompatActivity\n',
+              'import androidx.appcompat.app.AppCompatActivity\nimport androidx.lifecycle.lifecycleScope\nimport kotlinx.coroutines.launch\n'
+          )
+
+          s = s.replace(
+              'storage = GameStorage(this, romBytes)\n        root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }',
+              '''storage = GameStorage(this, romBytes)
+
+        val privateRom = java.io.File(filesDir, "roms/${storage.gameId}.nes").apply {
+            parentFile?.mkdirs()
+            if (!exists() || length() != romBytes.size.toLong()) {
+                writeBytes(romBytes)
+            }
+        }
+
+        root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }'''
+          )
+
+          s = s.replace(
+              'coreFilePath = "libfceumm_libretro_android.so"\n            gameFileBytes = romBytes',
+              '''coreFilePath = java.io.File(
+                applicationInfo.nativeLibraryDir,
+                "libfceumm_libretro_android.so"
+            ).absolutePath
+            gameFilePath = privateRom.absolutePath'''
+          )
+
+          s = s.replace(
+              'lifecycle.addObserver(retroView)\n    }',
+              '''lifecycle.addObserver(retroView)
+
+        lifecycleScope.launch {
+            retroView.getGLRetroErrors().collect { errorCode ->
+                val message = when (errorCode) {
+                    GLRetroView.ERROR_LOAD_LIBRARY -> "NES core failed to load"
+                    GLRetroView.ERROR_LOAD_GAME -> "ROM could not be loaded"
+                    GLRetroView.ERROR_GL_NOT_COMPATIBLE -> "Graphics initialization failed"
+                    GLRetroView.ERROR_SERIALIZATION -> "Save-state error"
+                    else -> "Emulator error (code $errorCode)"
+                }
+                Toast.makeText(this@GameActivity, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }'''
+          )
+
+          p.write_text(s)
+          PY
+
       - name: Build debug APK
         shell: bash
         run: |
@@ -57,13 +117,13 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1-debug.apk"
+          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1.1-debug.apk"
           ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V1-debug.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V1-debug-apk
+          name: NESMultiplayer-V1.1-debug-apk
           path: NESMultiplayer-V1-debug.apk
           if-no-files-found: error
           retention-days: 7
