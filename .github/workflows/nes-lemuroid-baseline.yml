@@ -41,14 +41,6 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" || true
 
-      - name: Brand baseline
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd /tmp/Lemuroid
-          # Keep the proven Lemuroid runtime intact. Only alter the visible debug app name.
-          find lemuroid-app/src -type f \( -name "*.xml" -o -name "*.kt" \) -print0 | xargs -0 sed -i 's/Lemuroid/NES Multiplayer Core Test/g' || true
-
       - name: Build bundled debug APK
         shell: bash
         run: |
