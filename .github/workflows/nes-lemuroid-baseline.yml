@@ -41,13 +41,13 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" || true
 
-      - name: Build bundled debug APK
+      - name: Build dynamic debug APK
         shell: bash
         run: |
           set -euxo pipefail
           cd /tmp/Lemuroid
           chmod +x gradlew
-          ./gradlew :lemuroid-app:assembleFreeBundleDebug --stacktrace --no-daemon
+          ./gradlew :lemuroid-app:assembleFreeDynamicDebug --stacktrace --no-daemon
 
       - name: Collect APK
         shell: bash
