@@ -42,17 +42,24 @@ jobs:
           mkdir -p /tmp/nes-source
           unzip -q /tmp/NESMultiplayerV1-source.zip -d /tmp/nes-source
 
-      - name: Apply V1.2 ROM/core compatibility fix
+      - name: Apply V1.3 JNI/core compatibility fix
         shell: bash
         run: |
           set -euxo pipefail
           GAME=/tmp/nes-source/NESMultiplayerV1/app/src/main/java/com/rishabh/nesv1/ui/GameActivity.kt
+          APPGRADLE=/tmp/nes-source/NESMultiplayerV1/app/build.gradle.kts
+
+          python3 -c 'from pathlib import Path; p=Path("'"$APPGRADLE"'"); s=p.read_text(); s=s.replace("jniLibs {\n            keepDebugSymbols", "jniLibs {\n            useLegacyPackaging = true\n            keepDebugSymbols"); p.write_text(s)'
+          grep -n -A4 -B2 "jniLibs" "$APPGRADLE"
 
           sed -i 's#coreFilePath = "libfceumm_libretro_android.so"#coreFilePath = applicationInfo.nativeLibraryDir + "/libfceumm_libretro_android.so"#' "$GAME"
 
           python3 -c 'from pathlib import Path; p=Path("'"$GAME"'"); s=p.read_text(); s=s.replace("    private lateinit var romBytes: ByteArray", "    private lateinit var romBytes: ByteArray\n    private lateinit var romFile: java.io.File"); marker="        storage = GameStorage(this, romBytes)\n"; insert="""        storage = GameStorage(this, romBytes)\n        romFile = java.io.File(filesDir, "roms/" + storage.gameId + ".nes").apply {\n            parentFile?.mkdirs()\n            writeBytes(romBytes)\n        }\n"""; s=s.replace(marker, insert); s=s.replace("            gameFileBytes = romBytes", "            gameFilePath = romFile.absolutePath"); p.write_text(s)'
 
           sed -i 's/preferLowLatencyAudio = true/preferLowLatencyAudio = false/' "$GAME"
+          sed -i 's/shader = ShaderConfig.Sharp/shader = ShaderConfig.Default/' "$GAME"
+
+          python3 -c 'from pathlib import Path; p=Path("'"$GAME"'"); s=p.read_text(); s=s.replace("import androidx.appcompat.app.AppCompatActivity", "import androidx.appcompat.app.AppCompatActivity\nimport androidx.lifecycle.lifecycleScope\nimport kotlinx.coroutines.launch"); s=s.replace("    private var touchControlsVisible = true", "    private var touchControlsVisible = true\n    private var emulatorReady = false"); s=s.replace("        lifecycle.addObserver(retroView)\n    }", """        lifecycle.addObserver(retroView)\n\n        lifecycleScope.launch {\n            retroView.getGLRetroEvents().collect { event ->\n                if (event is GLRetroView.GLRetroEvents.FrameRendered) {\n                    emulatorReady = true\n                }\n            }\n        }\n\n        lifecycleScope.launch {\n            retroView.getGLRetroErrors().collect { code ->\n                val msg = when (code) {\n                    GLRetroView.ERROR_LOAD_LIBRARY -> "NES core failed to load"\n                    GLRetroView.ERROR_LOAD_GAME -> "ROM failed to load"\n                    GLRetroView.ERROR_GL_NOT_COMPATIBLE -> "Graphics initialization failed"\n                    else -> "Emulator error code " + code\n                }\n                Toast.makeText(this@GameActivity, msg, Toast.LENGTH_LONG).show()\n            }\n        }\n    }"""); s=s.replace("                    \"Reset\" -> retroView.reset()", """                    "Reset" -> if (emulatorReady) {\n                        retroView.reset()\n                    } else {\n                        Toast.makeText(this, "Emulator is not ready yet", Toast.LENGTH_SHORT).show()\n                    }"""); p.write_text(s)'
 
           for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
             DIR="/tmp/nes-source/NESMultiplayerV1/app/src/main/jniLibs/$ABI"
@@ -75,13 +82,13 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1.2-debug.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V1.2-debug.apk"
+          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1.3-debug.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V1.3-debug.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V1.2-debug-apk
-          path: NESMultiplayer-V1.2-debug.apk
+          name: NESMultiplayer-V1.3-debug-apk
+          path: NESMultiplayer-V1.3-debug.apk
           if-no-files-found: error
           retention-days: 7
