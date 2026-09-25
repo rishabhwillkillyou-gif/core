@@ -1,4 +1,4 @@
-name: Build NES V2 Turbo Sharp
+name: Build NES V3 Portrait
 
 on:
   workflow_dispatch:
@@ -39,44 +39,128 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Add NES turbo buttons
+      - name: Replace NES touch layout
         shell: bash
         run: |
           set -euxo pipefail
-          NES=/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NES.kt
+          cat > /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NES.kt <<'KOT'
+          package com.swordfish.touchinput.radial.layouts
+
+          import android.view.KeyEvent
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.State
+          import androidx.compose.ui.Modifier
+          import com.swordfish.touchinput.radial.controls.LemuroidControlButton
+          import com.swordfish.touchinput.radial.controls.LemuroidControlCross
+          import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
+          import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
+          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
+          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenuPlaceholder
+          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonSelect
+          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
+          import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+          import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
+          import gg.padkit.PadKitScope
+          import gg.padkit.ids.Id
+          import kotlinx.collections.immutable.persistentListOf
+          import kotlinx.collections.immutable.persistentMapOf
+
+          @Composable
+          fun PadKitScope.NESLeft(
+              modifier: Modifier = Modifier,
+              settings: TouchControllerSettingsManager.Settings,
+          ) {
+              BaseLayoutLeft(
+                  settings = settings,
+                  modifier = modifier,
+                  primaryDial = { LemuroidControlCross(id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD)) },
+                  secondaryDials = {
+                      SecondaryButtonSelect()
+                      SecondaryButtonMenuPlaceholder(settings)
+                  },
+              )
+          }
+
+          @Composable
+          fun PadKitScope.NESRight(
+              modifier: Modifier = Modifier,
+              settings: TouchControllerSettingsManager.Settings,
+          ) {
+              BaseLayoutRight(
+                  settings = settings,
+                  modifier = modifier,
+                  primaryDial = {
+                      LemuroidControlFaceButtons(
+                          ids =
+                              persistentListOf(
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A),
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B),
+                              ),
+                          idsForegrounds =
+                              persistentMapOf<Id.Key, @Composable (State<Boolean>) -> Unit>(
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A) to { LemuroidButtonForeground(pressed = it, label = "A") },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B) to { LemuroidButtonForeground(pressed = it, label = "B") },
+                              ),
+                      )
+                  },
+                  secondaryDials = {
+                      LemuroidControlButton(
+                          modifier = Modifier.radialPosition(118f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_Y),
+                          label = "TB",
+                      )
+                      LemuroidControlButton(
+                          modifier = Modifier.radialPosition(158f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_X),
+                          label = "TA",
+                      )
+                      SecondaryButtonStart()
+                      SecondaryButtonMenu(settings)
+                  },
+              )
+          }
+          KOT
+
+      - name: Label Select and Start
+        shell: bash
+        run: |
+          set -euxo pipefail
+          CONTROLS=/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/shared/Controls.kt
+          sed -i 's/icon = R.drawable.button_select/label = "SELECT"/' "$CONTROLS"
+          sed -i 's/icon = R.drawable.button_start/label = "START"/' "$CONTROLS"
+
+      - name: Move portrait game to top and keep sharp rendering
+        shell: bash
+        run: |
+          set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path("/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NES.kt")
-          s=p.read_text()
-          s=s.replace(
-          '''                        Id.Key(KeyEvent.KEYCODE_BUTTON_A),
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_B),
-                      ),''',
-          '''                        Id.Key(KeyEvent.KEYCODE_BUTTON_A),
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_B),
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_Y),
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_X),
-                      ),''')
-          s=s.replace(
-          '''                        Id.Key(KeyEvent.KEYCODE_BUTTON_A) to { LemuroidButtonForeground(pressed = it, label = "A") },
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_B) to { LemuroidButtonForeground(pressed = it, label = "B") },
-                      ),''',
-          '''                        Id.Key(KeyEvent.KEYCODE_BUTTON_A) to { LemuroidButtonForeground(pressed = it, label = "A") },
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_B) to { LemuroidButtonForeground(pressed = it, label = "B") },
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_Y) to { LemuroidButtonForeground(pressed = it, label = "TB") },
-                          Id.Key(KeyEvent.KEYCODE_BUTTON_X) to { LemuroidButtonForeground(pressed = it, label = "TA") },
-                      ),''')
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
+          s = p.read_text()
+          old = """            constrain(gameView) {
+                          width = Dimension.fillToConstraints
+                          height = Dimension.fillToConstraints
+                          top.linkTo(parent.top)
+                          absoluteLeft.linkTo(parent.absoluteLeft)
+                          absoluteRight.linkTo(parent.absoluteRight)
+                          bottom.linkTo(leftPad.top)
+                      }"""
+          new = """            constrain(gameView) {
+                          width = Dimension.fillToConstraints
+                          height = Dimension.ratio("4:3")
+                          top.linkTo(parent.top)
+                          absoluteLeft.linkTo(parent.absoluteLeft)
+                          absoluteRight.linkTo(parent.absoluteRight)
+                      }"""
+          if old not in s:
+              raise SystemExit("portrait gameView block not found")
+          p.write_text(s.replace(old, new))
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
+          s = p.read_text().replace("SystemID.NES -> ShaderConfig.CRT", "SystemID.NES -> ShaderConfig.Sharp")
           p.write_text(s)
           PY
-          grep -n -A25 "LemuroidControlFaceButtons" "$NES"
-
-      - name: Make NES default rendering crisp
-        shell: bash
-        run: |
-          set -euxo pipefail
-          SHADER=/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt
-          sed -i 's/SystemID.NES -> ShaderConfig.CRT/SystemID.NES -> ShaderConfig.Sharp/' "$SHADER"
-          grep -n "SystemID.NES" "$SHADER"
 
       - name: Build dynamic debug APK
         shell: bash
@@ -92,13 +176,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V2-Turbo-Sharp.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V2-Turbo-Sharp.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V3-Portrait.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V3-Portrait.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V2-Turbo-Sharp
-          path: NESMultiplayer-V2-Turbo-Sharp.apk
+          name: NESMultiplayer-V3-Portrait
+          path: NESMultiplayer-V3-Portrait.apk
           if-no-files-found: error
           retention-days: 7
