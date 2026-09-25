@@ -42,13 +42,27 @@ jobs:
           mkdir -p /tmp/nes-source
           unzip -q /tmp/NESMultiplayerV1-source.zip -d /tmp/nes-source
 
-      - name: Apply V1.1 core-loading fix
+      - name: Apply V1.2 ROM/core compatibility fix
         shell: bash
         run: |
           set -euxo pipefail
           GAME=/tmp/nes-source/NESMultiplayerV1/app/src/main/java/com/rishabh/nesv1/ui/GameActivity.kt
+
           sed -i 's#coreFilePath = "libfceumm_libretro_android.so"#coreFilePath = applicationInfo.nativeLibraryDir + "/libfceumm_libretro_android.so"#' "$GAME"
-          grep -n "coreFilePath" "$GAME"
+
+          python3 -c 'from pathlib import Path; p=Path("'"$GAME"'"); s=p.read_text(); marker="        storage = GameStorage(this, romBytes)\n"; insert="""        storage = GameStorage(this, romBytes)\n        val privateRom = java.io.File(filesDir, "roms/" + storage.gameId + ".nes").apply {\n            parentFile?.mkdirs()\n            writeBytes(romBytes)\n        }\n"""; s=s.replace(marker, insert); s=s.replace("            gameFileBytes = romBytes", "            gameFilePath = privateRom.absolutePath"); p.write_text(s)'
+
+          sed -i 's/preferLowLatencyAudio = true/preferLowLatencyAudio = false/' "$GAME"
+
+          for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
+            DIR="/tmp/nes-source/NESMultiplayerV1/app/src/main/jniLibs/$ABI"
+            mkdir -p "$DIR"
+            curl -fL --retry 3 -o "$DIR/libfceumm_libretro_android.so" \
+              "https://raw.githubusercontent.com/Swordfish90/LemuroidCores/master/lemuroid_core_fceumm/src/main/jniLibs/$ABI/libfceumm_libretro_android.so"
+          done
+
+          grep -n -E "coreFilePath|gameFilePath|privateRom|preferLowLatencyAudio" "$GAME"
+          ls -lh /tmp/nes-source/NESMultiplayerV1/app/src/main/jniLibs/arm64-v8a/libfceumm_libretro_android.so
 
       - name: Build debug APK
         shell: bash
@@ -61,13 +75,13 @@ jobs:
       - name: Prepare APK
         shell: bash
         run: |
-          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1.1-debug.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V1.1-debug.apk"
+          cp /tmp/nes-source/NESMultiplayerV1/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/NESMultiplayer-V1.2-debug.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V1.2-debug.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V1.1-debug-apk
-          path: NESMultiplayer-V1.1-debug.apk
+          name: NESMultiplayer-V1.2-debug-apk
+          path: NESMultiplayer-V1.2-debug.apk
           if-no-files-found: error
           retention-days: 7
