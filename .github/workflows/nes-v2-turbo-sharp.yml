@@ -323,52 +323,36 @@ jobs:
           import androidx.compose.foundation.shape.RoundedCornerShape''',
           )
 
-          marker = '''            ConstraintLayout(
-                      modifier = Modifier.fillMaxSize(),
-                      constraintSet =
-                          GameScreenLayout.buildConstraintSet(
-                              isLandscape,
-                              currentControllerConfig?.allowTouchOverlay ?: true,
-                          ),
-                  ) {
-                      Box(
-                          modifier =
-                              Modifier
-                                  .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
+          # Insert the bezel immediately before the Box that defines the
+          # emulation viewport. This is resilient to upstream formatting changes.
+          viewport_token = '.layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'
+          viewport_index = s.find(viewport_token)
+          if viewport_index < 0:
+              raise SystemExit("Game viewport token not found")
+          box_index = s.rfind('                Box(', 0, viewport_index)
+          if box_index < 0:
+              raise SystemExit("Game viewport Box not found")
 
-          replacement = '''            ConstraintLayout(
-                      modifier = Modifier.fillMaxSize(),
-                      constraintSet =
-                          GameScreenLayout.buildConstraintSet(
-                              isLandscape,
-                              currentControllerConfig?.allowTouchOverlay ?: true,
-                          ),
-                  ) {
-                      if (!isLandscape) {
-                          Box(
-                              modifier =
-                                  Modifier
-                                      .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)
-                                      .background(
-                                          color = Color(0xFFB9B9B2),
-                                          shape = RoundedCornerShape(28.dp),
-                                      )
-                                      .border(
-                                          width = 2.dp,
-                                          color = Color(0xFF73736F),
-                                          shape = RoundedCornerShape(28.dp),
-                                      ),
-                          )
-                      }
-
-                      Box(
-                          modifier =
-                              Modifier
-                                  .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
-
-          if marker not in s:
-              raise SystemExit("ConstraintLayout insertion point not found")
-          s = s.replace(marker, replacement, 1)
+          bezel = chr(10).join([
+              '                if (!isLandscape) {',
+              '                    Box(',
+              '                        modifier =',
+              '                            Modifier',
+              '                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)',
+              '                                .background(',
+              '                                    color = Color(0xFFB9B9B2),',
+              '                                    shape = RoundedCornerShape(28.dp),',
+              '                                )',
+              '                                .border(',
+              '                                    width = 2.dp,',
+              '                                    color = Color(0xFF73736F),',
+              '                                    shape = RoundedCornerShape(28.dp),',
+              '                                ),',
+              '                    )',
+              '                }',
+              '',
+          ])
+          s = s[:box_index] + bezel + s[box_index:]
           p.write_text(s)
 
           # Preserve the crisp pixel scaler the user preferred.
