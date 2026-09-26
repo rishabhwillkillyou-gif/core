@@ -60,7 +60,7 @@ retro.write_text(s)
 # Enlarge the primary touch controls slightly.
 base = root / "lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/BaseLayout.kt"
 s = base.read_text()
-s = s.replace("primaryDialMaxSize = 160.dp", "primaryDialMaxSize = 178.dp")
+s = s.replace("primaryDialMaxSize = 160.dp", "primaryDialMaxSize = 184.dp")
 base.write_text(s)
 
 # Portrait layout: exact 4:3 game viewport inside a matching bezel.
@@ -116,17 +116,17 @@ new = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
             constrain(gameBezel) {
                 width = Dimension.fillToConstraints
                 height = Dimension.ratio("6:5")
-                top.linkTo(parent.top, margin = 12.dp)
-                absoluteLeft.linkTo(parent.absoluteLeft, margin = 8.dp)
-                absoluteRight.linkTo(parent.absoluteRight, margin = 8.dp)
+                top.linkTo(parent.top, margin = 6.dp)
+                absoluteLeft.linkTo(parent.absoluteLeft, margin = 4.dp)
+                absoluteRight.linkTo(parent.absoluteRight, margin = 4.dp)
             }
 
             constrain(gameView) {
                 width = Dimension.fillToConstraints
                 height = Dimension.ratio("4:3")
-                top.linkTo(gameBezel.top, margin = 24.dp)
-                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 20.dp)
-                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 20.dp)
+                top.linkTo(gameBezel.top, margin = 18.dp)
+                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 10.dp)
+                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 10.dp)
             }
 
             constrain(bottomContainer) {
@@ -150,16 +150,16 @@ old = '''            constrain(rightPad) {
             }'''
 new = '''            constrain(rightPad) {
                 width = Dimension.fillToConstraints
-                top.linkTo(gameBezel.bottom, margin = 8.dp)
-                bottom.linkTo(parent.bottom, margin = 20.dp)
-                verticalBias = 0.58f
+                top.linkTo(gameBezel.bottom, margin = 2.dp)
+                bottom.linkTo(parent.bottom, margin = 40.dp)
+                verticalBias = 0.24f
             }
 
             constrain(leftPad) {
                 width = Dimension.fillToConstraints
                 top.linkTo(gameBezel.bottom, margin = 8.dp)
                 bottom.linkTo(parent.bottom, margin = 20.dp)
-                verticalBias = 0.58f
+                verticalBias = 0.24f
             }'''
 s = must_replace(s, old, new, "portrait pad constraints")
 
@@ -213,9 +213,9 @@ replacement = '''            ) {
                                 .drawBehind {
                                     val olive = Color(0xFF697045)
                                     val dark = Color(0xFF1D211D)
-                                    val side = 20.dp.toPx()
-                                    val topFrame = 24.dp.toPx()
-                                    val bottomFrame = 24.dp.toPx()
+                                    val side = 10.dp.toPx()
+                                    val topFrame = 18.dp.toPx()
+                                    val bottomFrame = 18.dp.toPx()
 
                                     drawRect(olive, Offset.Zero, Size(size.width, topFrame))
                                     drawRect(olive, Offset(0f, size.height - bottomFrame), Size(size.width, bottomFrame))
@@ -227,6 +227,39 @@ replacement = '''            ) {
                                     drawRect(dark, Offset(side - inner, size.height - bottomFrame), Size(size.width - 2f * (side - inner), inner))
                                     drawRect(dark, Offset(side - inner, topFrame), Size(inner, size.height - topFrame - bottomFrame))
                                     drawRect(dark, Offset(size.width - side, topFrame), Size(inner, size.height - topFrame - bottomFrame))
+
+                                    val screwColor = Color(0xFF24271F)
+                                    val screwRadius = 5.dp.toPx()
+                                    listOf(
+                                        Offset(12.dp.toPx(), 12.dp.toPx()),
+                                        Offset(size.width - 12.dp.toPx(), 12.dp.toPx()),
+                                        Offset(12.dp.toPx(), size.height - 12.dp.toPx()),
+                                        Offset(size.width - 12.dp.toPx(), size.height - 12.dp.toPx()),
+                                    ).forEach { point ->
+                                        drawCircle(screwColor, screwRadius, point)
+                                        drawLine(
+                                            Color.Black,
+                                            Offset(point.x - screwRadius * 0.45f, point.y),
+                                            Offset(point.x + screwRadius * 0.45f, point.y),
+                                            strokeWidth = 1.4.dp.toPx(),
+                                        )
+                                    }
+
+                                    drawCircle(Color(0xFF6FD744), 4.dp.toPx(), Offset(18.dp.toPx(), 76.dp.toPx()))
+                                    drawCircle(Color(0xFFC6C395), 4.dp.toPx(), Offset(18.dp.toPx(), 98.dp.toPx()))
+
+                                    repeat(8) { row ->
+                                        repeat(2) { col ->
+                                            drawCircle(
+                                                Color(0xFF151713),
+                                                2.dp.toPx(),
+                                                Offset(
+                                                    size.width - 18.dp.toPx() + col * 8.dp.toPx(),
+                                                    70.dp.toPx() + row * 11.dp.toPx(),
+                                                ),
+                                            )
+                                        }
+                                    }
                                 }
                                 .border(
                                     width = 2.dp,
@@ -282,6 +315,39 @@ new_pad = '''private fun PadContainer(modifier: Modifier = Modifier) {
 
                 val band = 22.dp.toPx()
                 drawRect(olive, Offset(0f, size.height - band), Size(size.width, band))
+
+                val ventBase = size.height - 78.dp.toPx()
+                repeat(7) { i ->
+                    val lx = 18.dp.toPx() + i * 10.dp.toPx()
+                    drawLine(
+                        olive,
+                        Offset(lx, ventBase),
+                        Offset(lx + 30.dp.toPx(), size.height - 28.dp.toPx()),
+                        strokeWidth = 5.dp.toPx(),
+                    )
+
+                    val rx = size.width - 18.dp.toPx() - i * 10.dp.toPx()
+                    drawLine(
+                        olive,
+                        Offset(rx, ventBase),
+                        Offset(rx - 30.dp.toPx(), size.height - 28.dp.toPx()),
+                        strokeWidth = 5.dp.toPx(),
+                    )
+                }
+
+                val cx = size.width / 2f
+                drawLine(
+                    olive,
+                    Offset(cx - 12.dp.toPx(), size.height - 34.dp.toPx()),
+                    Offset(cx, size.height - 18.dp.toPx()),
+                    strokeWidth = 3.dp.toPx(),
+                )
+                drawLine(
+                    olive,
+                    Offset(cx, size.height - 18.dp.toPx()),
+                    Offset(cx + 12.dp.toPx(), size.height - 34.dp.toPx()),
+                    strokeWidth = 3.dp.toPx(),
+                )
             },
         cornerRadius = 18.dp,
         fillColor = Color.Transparent,
