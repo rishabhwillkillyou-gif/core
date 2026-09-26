@@ -1,4 +1,4 @@
-name: Build NES V8.1 Landscape Embedded
+name: Build NES V8.2 Landscape Embedded
 
 on:
   workflow_dispatch:
@@ -86,13 +86,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V8.1-Landscape-Embedded.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V8.1-Landscape-Embedded.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V8.2-Landscape-Embedded.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V8.2-Landscape-Embedded.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V8.1-Landscape-Embedded
-          path: NESMultiplayer-V8.1-Landscape-Embedded.apk
+          name: NESMultiplayer-V8.2-Landscape-Embedded
+          path: NESMultiplayer-V8.2-Landscape-Embedded.apk
           if-no-files-found: error
           retention-days: 7
