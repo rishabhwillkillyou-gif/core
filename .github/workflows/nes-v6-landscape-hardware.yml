@@ -1,0 +1,774 @@
+name: Build NES V6 Landscape Hardware
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - nes-emulator-v1-build
+    paths:
+      - ".github/workflows/nes-v6-landscape-hardware.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout holder repo
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Clone Lemuroid with submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/Swordfish90/Lemuroid.git /tmp/Lemuroid
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Remove notification requirement
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          home = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/home/HomeViewModel.kt")
+          s = home.read_text()
+          s = s.replace(
+              "showNoNotificationPermissionCard = !notificationsPermissionEnabled",
+              "showNoNotificationPermissionCard = false",
+          )
+          home.write_text(s)
+
+          interactor = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/GameInteractor.kt")
+          s = interactor.read_text()
+          gate = "        if (!ensureNotificationsPermissionAvailable()) {\n            return\n        }\n"
+          count = s.count(gate)
+          if count != 2:
+              raise SystemExit(f"Expected two notification launch gates, found {count}")
+          s = s.replace(gate, "")
+          interactor.write_text(s)
+          PY
+
+      - name: Force working FCEUmm turbo
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt")
+          s = p.read_text()
+
+          old = 'variables = gameData.coreVariables.map { Variable(it.key, it.value) }.toTypedArray()'
+          new = '''variables =
+                (
+                    gameData.coreVariables
+                        .filterNot { it.key == "fceumm_turbo_enable" || it.key == "fceumm_turbo_delay" }
+                        .map { Variable(it.key, it.value) } +
+                        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
+                            listOf(
+                                Variable("fceumm_turbo_enable", "Player 1"),
+                                Variable("fceumm_turbo_delay", "2"),
+                            )
+                        } else {
+                            emptyList()
+                        }
+                ).toTypedArray()'''
+          if old not in s:
+              raise SystemExit("Initial core variable assignment not found")
+          s = s.replace(old, new, 1)
+
+          marker = '        retroGameView?.updateVariables(*updatedVariables)'
+          replacement = '\n'.join([
+              '        retroGameView?.updateVariables(*updatedVariables)',
+              '',
+              '        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {',
+              '            retroGameView?.updateVariables(',
+              '                Variable("fceumm_turbo_enable", "Player 1"),',
+              '                Variable("fceumm_turbo_delay", "2"),',
+              '            )',
+              '        }',
+          ])
+          if marker not in s:
+              raise SystemExit("Runtime updateVariables call not found")
+          s = s.replace(marker, replacement, 1)
+          p.write_text(s)
+          PY
+
+      - name: Replace NES controller layout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat > /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NES.kt <<'KOT'
+          package com.swordfish.touchinput.radial.layouts
+
+          import android.view.KeyEvent
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.State
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.Offset
+          import com.swordfish.touchinput.radial.controls.LemuroidControlButton
+          import com.swordfish.touchinput.radial.controls.LemuroidControlCross
+          import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
+          import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
+          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
+          import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+          import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
+          import gg.padkit.PadKitScope
+          import gg.padkit.anchors.Anchor
+          import gg.padkit.ids.Id
+          import kotlinx.collections.immutable.persistentListOf
+          import kotlinx.collections.immutable.persistentMapOf
+          import kotlinx.collections.immutable.persistentSetOf
+
+          @Composable
+          fun PadKitScope.NESLeft(
+              modifier: Modifier = Modifier,
+              settings: TouchControllerSettingsManager.Settings,
+          ) {
+              BaseLayoutLeft(
+                  settings = settings,
+                  modifier = modifier,
+                  primaryDial = {
+                      LemuroidControlCross(
+                          id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD),
+                      )
+                  },
+                  secondaryDials = {
+                      LemuroidControlButton(
+                          modifier = Modifier.radialPosition(330f).radialScale(1.10f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
+                          label = "SELECT",
+                      )
+                  },
+              )
+          }
+
+          @Composable
+          fun PadKitScope.NESRight(
+              modifier: Modifier = Modifier,
+              settings: TouchControllerSettingsManager.Settings,
+          ) {
+              BaseLayoutRight(
+                  settings = settings,
+                  modifier = modifier,
+                  primaryDial = {
+                      LemuroidControlFaceButtons(
+                          primaryAnchors =
+                              persistentListOf(
+                                  Anchor(
+                                      Offset(1f, 0f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_A)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(0f, 1f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_B)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(-1f, 0f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_Y)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(0f, -1f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_X)),
+                                      0.38f,
+                                  ),
+                              ),
+                          idsForegrounds =
+                              persistentMapOf<Id.Key, @Composable (State<Boolean>) -> Unit>(
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A) to {
+                                      LemuroidButtonForeground(pressed = it, label = "A")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B) to {
+                                      LemuroidButtonForeground(pressed = it, label = "B")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_Y) to {
+                                      LemuroidButtonForeground(pressed = it, label = "TB")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_X) to {
+                                      LemuroidButtonForeground(pressed = it, label = "TA")
+                                  },
+                              ),
+                      )
+                  },
+                  secondaryDials = {
+                      LemuroidControlButton(
+                          modifier = Modifier.radialPosition(210f).radialScale(1.10f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
+                          label = "START",
+                      )
+                      SecondaryButtonMenu(settings)
+                  },
+              )
+          }
+          KOT
+
+      - name: Build SUP inspired handheld shell
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          layout = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
+          s = layout.read_text()
+          s = s.replace(
+              "import androidx.constraintlayout.compose.Dimension",
+              "import androidx.constraintlayout.compose.Dimension\nimport androidx.compose.ui.unit.dp",
+              1,
+          )
+          s = s.replace(
+              '    const val CONSTRAINTS_GAME_VIEW = "gameView"',
+              '    const val CONSTRAINTS_GAME_VIEW = "gameView"\n    const val CONSTRAINTS_GAME_BEZEL = "gameBezel"',
+              1,
+          )
+
+          old = "\n".join([
+              "            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)",
+              "            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)",
+              "            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)",
+              "            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)",
+              "            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)",
+              "",
+              "            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)",
+              "",
+              "            constrain(gameView) {",
+              "                width = Dimension.fillToConstraints",
+              "                height = Dimension.fillToConstraints",
+              "                top.linkTo(parent.top)",
+              "                absoluteLeft.linkTo(parent.absoluteLeft)",
+              "                absoluteRight.linkTo(parent.absoluteRight)",
+              "                bottom.linkTo(leftPad.top)",
+              "            }",
+          ])
+          new = "\n".join([
+              "            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)",
+              "            val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)",
+              "            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)",
+              "            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)",
+              "            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)",
+              "            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)",
+              "",
+              "            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)",
+              "",
+              "            constrain(gameBezel) {",
+              "                width = Dimension.fillToConstraints",
+              '                height = Dimension.ratio("6:5")',
+              "                top.linkTo(parent.top, margin = 18.dp)",
+              "                absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)",
+              "                absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)",
+              "            }",
+              "",
+              "            constrain(gameView) {",
+              "                width = Dimension.fillToConstraints",
+              '                height = Dimension.ratio("4:3")',
+              "                top.linkTo(gameBezel.top, margin = 42.dp)",
+              "                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)",
+              "                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)",
+              "            }",
+          ])
+          if old not in s:
+              raise SystemExit("Portrait game block not found")
+          s = s.replace(old, new, 1)
+
+          s = s.replace(
+              "                top.linkTo(leftPad.top)",
+              "                top.linkTo(gameBezel.bottom)",
+              1,
+          )
+
+          pad_old = "\n".join([
+              "            constrain(rightPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                bottom.linkTo(parent.bottom)",
+              "            }",
+              "",
+              "            constrain(leftPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                bottom.linkTo(parent.bottom)",
+              "            }",
+          ])
+          pad_new = "\n".join([
+              "            constrain(rightPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                top.linkTo(gameBezel.bottom, margin = 16.dp)",
+              "                bottom.linkTo(parent.bottom, margin = 24.dp)",
+              "                verticalBias = 0.78f",
+              "            }",
+              "",
+              "            constrain(leftPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                top.linkTo(gameBezel.bottom, margin = 16.dp)",
+              "                bottom.linkTo(parent.bottom, margin = 24.dp)",
+              "                verticalBias = 0.78f",
+              "            }",
+          ])
+          if pad_old not in s:
+              raise SystemExit("Portrait pad block not found")
+          s = s.replace(pad_old, pad_new, 1)
+          layout.write_text(s)
+
+          screen = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
+          s = screen.read_text()
+          s = s.replace(
+              "import androidx.compose.foundation.layout.Arrangement",
+              "import androidx.compose.foundation.border\nimport androidx.compose.foundation.layout.Arrangement",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.draw.rotate",
+              "import androidx.compose.ui.draw.rotate\nimport androidx.compose.ui.draw.drawBehind",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.geometry.Rect",
+              "import androidx.compose.ui.geometry.Rect\nimport androidx.compose.ui.geometry.Offset\nimport androidx.compose.ui.geometry.Size",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.graphics.vector.ImageVector",
+              "import androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.graphics.vector.ImageVector",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.unit.dp",
+              "import androidx.compose.ui.unit.dp\nimport androidx.compose.foundation.shape.RoundedCornerShape",
+              1,
+          )
+
+          viewport_token = ".layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)"
+          viewport_index = s.find(viewport_token)
+          if viewport_index < 0:
+              raise SystemExit("Game viewport token not found")
+          box_index = s.rfind("                Box(", 0, viewport_index)
+          if box_index < 0:
+              raise SystemExit("Game viewport Box not found")
+
+          bezel = "\n".join([
+              "                if (!isLandscape) {",
+              "                    Box(",
+              "                        modifier =",
+              "                            Modifier",
+              "                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)",
+              "                                .drawBehind {",
+              "                                    val body = Color(0xFFB52B38)",
+              "                                    val side = 22.dp.toPx()",
+              "                                    val topFrame = 42.dp.toPx()",
+              "                                    val bottomFrame = 44.dp.toPx()",
+              "                                    drawRect(body, Offset.Zero, Size(size.width, topFrame))",
+              "                                    drawRect(body, Offset(0f, size.height - bottomFrame), Size(size.width, bottomFrame))",
+              "                                    drawRect(body, Offset(0f, topFrame), Size(side, size.height - topFrame - bottomFrame))",
+              "                                    drawRect(body, Offset(size.width - side, topFrame), Size(side, size.height - topFrame - bottomFrame))",
+              "                                }",
+              "                                .border(",
+              "                                    width = 2.dp,",
+              "                                    color = Color(0xFF68131D),",
+              "                                    shape = RoundedCornerShape(28.dp),",
+              "                                ),",
+              "                    )",
+              "                }",
+              "",
+          ])
+          s = s[:box_index] + bezel + s[box_index:]
+
+          s = s.replace(
+              "cornerRadius = theme.level0CornerRadius,\n        fillColor = theme.level0Fill,",
+              "cornerRadius = 28.dp,\n        fillColor = Color(0xFFB52B38),",
+              1,
+          )
+          screen.write_text(s)
+
+          theme = Path("/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/LemuroidPadTheme.kt")
+          s = theme.read_text()
+          replacements = {
+              "private val icons = gray(0.0f, 0.50f)": "private val icons = gray(1.0f, 0.82f)",
+              "private val iconsPressed = gray(1.0f, 0.50f)": "private val iconsPressed = gray(1.0f, 1.0f)",
+              "private val level3Fill = gray(1.0f, 0.50f)": "private val level3Fill = gray(0.08f, 0.96f)",
+              "private val level3FillPressed = gray(0.0f, 0.50f)": "private val level3FillPressed = gray(0.28f, 0.98f)",
+              "private val level2Fill = gray(1.0f, 0.125f)": "private val level2Fill = gray(0.05f, 0.90f)",
+              "private val level2FillPressed = gray(0.0f, 0.125f)": "private val level2FillPressed = gray(0.24f, 0.95f)",
+              "val level1Fill = gray(1.0f, 0.10f)": "val level1Fill = gray(0.04f, 0.88f)",
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f"Theme token not found: {old}")
+              s = s.replace(old, new, 1)
+          theme.write_text(s)
+
+          shader = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
+          s = shader.read_text().replace("SystemID.NES -> ShaderConfig.CRT", "SystemID.NES -> ShaderConfig.Sharp")
+          shader.write_text(s)
+          PY
+
+      - name: Add dedicated landscape hardware-shell mode
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cat > /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NESLandscapeHardware.kt <<'KOT'
+          package com.swordfish.touchinput.radial.layouts
+
+          import android.view.KeyEvent
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.State
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.unit.dp
+          import com.swordfish.touchinput.radial.controls.LemuroidControlCross
+          import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
+          import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
+          import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
+          import com.swordfish.touchinput.radial.ui.LemuroidControlBackground
+          import gg.padkit.PadKitScope
+          import gg.padkit.anchors.Anchor
+          import gg.padkit.controls.ControlButton
+          import gg.padkit.ids.Id
+          import kotlinx.collections.immutable.persistentListOf
+          import kotlinx.collections.immutable.persistentMapOf
+          import kotlinx.collections.immutable.persistentSetOf
+
+          context(PadKitScope)
+          @Composable
+          fun NESLandscapeHardwareLeft(modifier: Modifier = Modifier) {
+              Column(
+                  modifier =
+                      modifier
+                          .width(156.dp)
+                          .fillMaxHeight()
+                          .padding(horizontal = 10.dp, vertical = 12.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.Center,
+              ) {
+                  LemuroidControlCross(
+                      modifier = Modifier.size(132.dp),
+                      id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD),
+                  )
+
+                  Spacer(modifier = Modifier.height(14.dp))
+
+                  NESLandscapeHardwareButton(
+                      modifier = Modifier.width(106.dp).height(40.dp),
+                      id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
+                      label = "SELECT",
+                  )
+              }
+          }
+
+          context(PadKitScope)
+          @Composable
+          fun NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
+              Column(
+                  modifier =
+                      modifier
+                          .width(156.dp)
+                          .fillMaxHeight()
+                          .padding(horizontal = 10.dp, vertical = 12.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.Center,
+              ) {
+                  LemuroidControlFaceButtons(
+                      modifier = Modifier.size(142.dp),
+                      primaryAnchors =
+                          persistentListOf(
+                              Anchor(
+                                  Offset(-0.52f, -0.52f),
+                                  persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_B)),
+                                  0.36f,
+                              ),
+                              Anchor(
+                                  Offset(0.52f, -0.52f),
+                                  persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_Y)),
+                                  0.36f,
+                              ),
+                              Anchor(
+                                  Offset(-0.52f, 0.52f),
+                                  persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_A)),
+                                  0.36f,
+                              ),
+                              Anchor(
+                                  Offset(0.52f, 0.52f),
+                                  persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_X)),
+                                  0.36f,
+                              ),
+                          ),
+                      idsForegrounds =
+                          persistentMapOf<Id.Key, @Composable (State<Boolean>) -> Unit>(
+                              Id.Key(KeyEvent.KEYCODE_BUTTON_B) to {
+                                  LemuroidButtonForeground(pressed = it, label = "B")
+                              },
+                              Id.Key(KeyEvent.KEYCODE_BUTTON_Y) to {
+                                  LemuroidButtonForeground(pressed = it, label = "TB")
+                              },
+                              Id.Key(KeyEvent.KEYCODE_BUTTON_A) to {
+                                  LemuroidButtonForeground(pressed = it, label = "A")
+                              },
+                              Id.Key(KeyEvent.KEYCODE_BUTTON_X) to {
+                                  LemuroidButtonForeground(pressed = it, label = "TA")
+                              },
+                          ),
+                  )
+
+                  Spacer(modifier = Modifier.height(14.dp))
+
+                  NESLandscapeHardwareButton(
+                      modifier = Modifier.width(106.dp).height(40.dp),
+                      id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
+                      label = "START",
+                  )
+              }
+          }
+
+          context(PadKitScope)
+          @Composable
+          private fun NESLandscapeHardwareButton(
+              modifier: Modifier,
+              id: Id.Key,
+              label: String,
+          ) {
+              ControlButton(
+                  modifier = modifier,
+                  id = id,
+                  foreground = {
+                      LemuroidButtonForeground(
+                          pressed = it,
+                          label = label,
+                      )
+                  },
+                  background = { LemuroidControlBackground() },
+              )
+          }
+          KOT
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
+          s = p.read_text()
+
+          if "NESLandscapeHardwareLeft" not in s:
+              s = s.replace(
+                  "import com.swordfish.touchinput.radial.LocalLemuroidPadTheme",
+                  "import com.swordfish.touchinput.radial.LocalLemuroidPadTheme\n"
+                  "import com.swordfish.touchinput.radial.layouts.NESLandscapeHardwareLeft\n"
+                  "import com.swordfish.touchinput.radial.layouts.NESLandscapeHardwareRight",
+                  1,
+              )
+
+          old_constraint = '''                    GameScreenLayout.buildConstraintSet(
+                          isLandscape,
+                          currentControllerConfig?.allowTouchOverlay ?: true,
+                      ),'''
+          new_constraint = '''                    GameScreenLayout.buildConstraintSet(
+                          isLandscape,
+                          if (isLandscape) false else currentControllerConfig?.allowTouchOverlay ?: true,
+                      ),'''
+          if old_constraint not in s:
+              raise SystemExit("Constraint selection block not found")
+          s = s.replace(old_constraint, new_constraint, 1)
+
+          old_controls = '''                        if (!isLandscape) {
+                              PadContainer(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_BOTTOM_CONTAINER),
+                              )
+                          } else if (!currentControllerConfig.allowTouchOverlay) {
+                              PadContainer(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_CONTAINER),
+                              )
+                              PadContainer(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_CONTAINER),
+                              )
+                          }
+
+                          leftGamePad?.invoke(
+                              this,
+                              Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_PAD),
+                              touchControllerSettings,
+                          )
+                          rightGamePad?.invoke(
+                              this,
+                              Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
+                              touchControllerSettings,
+                          )'''
+
+          new_controls = '''                        if (!isLandscape) {
+                              PadContainer(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_BOTTOM_CONTAINER),
+                              )
+                          } else {
+                              LandscapeHardwarePanel(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_CONTAINER),
+                                  rightSide = false,
+                              )
+                              LandscapeHardwarePanel(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_CONTAINER),
+                                  rightSide = true,
+                              )
+                          }
+
+                          if (isLandscape) {
+                              NESLandscapeHardwareLeft(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_PAD),
+                              )
+                              NESLandscapeHardwareRight(
+                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
+                              )
+                          } else {
+                              leftGamePad?.invoke(
+                                  this,
+                                  Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_PAD),
+                                  touchControllerSettings,
+                              )
+                              rightGamePad?.invoke(
+                                  this,
+                                  Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
+                                  touchControllerSettings,
+                              )
+                          }'''
+
+          if old_controls not in s:
+              raise SystemExit("Touch-control rendering block not found")
+          s = s.replace(old_controls, new_controls, 1)
+
+          viewport = '''                        .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)
+                              .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
+                              .onGloballyPositioned { viewportPosition.value = it.boundsInRoot() },'''
+          viewport_new = '''                        .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)
+                              .then(
+                                  if (isLandscape) {
+                                      Modifier.border(
+                                          width = 4.dp,
+                                          color = Color(0xFF171A12),
+                                          shape = RoundedCornerShape(10.dp),
+                                      )
+                                  } else {
+                                      Modifier
+                                  },
+                              )
+                              .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
+                              .onGloballyPositioned { viewportPosition.value = it.boundsInRoot() },'''
+          if viewport not in s:
+              raise SystemExit("Viewport modifier block not found")
+          s = s.replace(viewport, viewport_new, 1)
+
+          insert_point = "@Composable\nprivate fun PadContainer"
+          hardware_fn = '''@Composable
+          private fun LandscapeHardwarePanel(
+              modifier: Modifier = Modifier,
+              rightSide: Boolean,
+          ) {
+              val body = Color(0xFF666A49)
+              val edge = Color(0xFF24261B)
+              val detail = Color(0xFF303325)
+              val led = Color(0xFF8FEA35)
+
+              Box(
+                  modifier =
+                      modifier
+                          .drawBehind {
+                              drawRect(body)
+
+                              val screwRadius = 5.dp.toPx()
+                              val inset = 13.dp.toPx()
+                              drawCircle(detail, screwRadius, Offset(inset, inset))
+                              drawCircle(detail, screwRadius, Offset(size.width - inset, inset))
+                              drawCircle(detail, screwRadius, Offset(inset, size.height - inset))
+                              drawCircle(detail, screwRadius, Offset(size.width - inset, size.height - inset))
+
+                              val grilleRadius = 2.1.dp.toPx()
+                              val grilleGap = 8.dp.toPx()
+                              val baseY = size.height - 46.dp.toPx()
+                              val baseX =
+                                  if (rightSide) {
+                                      size.width - 52.dp.toPx()
+                                  } else {
+                                      20.dp.toPx()
+                                  }
+
+                              for (row in 0..3) {
+                                  for (col in 0..4) {
+                                      drawCircle(
+                                          detail,
+                                          grilleRadius,
+                                          Offset(
+                                              baseX + col * grilleGap,
+                                              baseY + row * grilleGap,
+                                          ),
+                                      )
+                                  }
+                              }
+
+                              if (rightSide) {
+                                  val ledY = 24.dp.toPx()
+                                  drawCircle(led, 4.dp.toPx(), Offset(size.width * 0.36f, ledY))
+                                  drawCircle(detail, 4.dp.toPx(), Offset(size.width * 0.50f, ledY))
+                                  drawCircle(detail, 4.dp.toPx(), Offset(size.width * 0.64f, ledY))
+                              }
+                          }
+                          .border(
+                              width = 2.dp,
+                              color = edge,
+                              shape = RoundedCornerShape(10.dp),
+                          ),
+              )
+          }
+
+          @Composable
+          private fun PadContainer'''
+          if insert_point not in s:
+              raise SystemExit("PadContainer insertion point not found")
+          s = s.replace(insert_point, hardware_fn, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Build dynamic debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/Lemuroid
+          chmod +x gradlew
+          ./gradlew :lemuroid-app:assembleFreeDynamicDebug --stacktrace --no-daemon
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V6-Landscape-Hardware.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V6-Landscape-Hardware.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NESMultiplayer-V6-Landscape-Hardware
+          path: NESMultiplayer-V6-Landscape-Hardware.apk
+          if-no-files-found: error
+          retention-days: 7
