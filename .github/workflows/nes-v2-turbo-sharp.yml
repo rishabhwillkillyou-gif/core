@@ -214,150 +214,167 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
+          # Portrait constraint layout: add a handheld bezel, lower the
+          # screen slightly inside it, and lift the controls ~1 cm.
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
           s = p.read_text()
+
           s = s.replace(
-              'import androidx.constraintlayout.compose.Dimension\n',
-              'import androidx.constraintlayout.compose.Dimension\nimport androidx.compose.ui.unit.dp\n'
+          '''import androidx.constraintlayout.compose.Dimension''',
+          '''import androidx.constraintlayout.compose.Dimension
+          import androidx.compose.ui.unit.dp''',
           )
+
           s = s.replace(
-              'const val CONSTRAINTS_GAME_VIEW = "gameView"\n',
-              'const val CONSTRAINTS_GAME_VIEW = "gameView"\n    const val CONSTRAINTS_GAME_BEZEL = "gameBezel"\n'
+          '''    const val CONSTRAINTS_GAME_VIEW = "gameView"''',
+          '''    const val CONSTRAINTS_GAME_VIEW = "gameView"
+              const val CONSTRAINTS_GAME_BEZEL = "gameBezel"''',
           )
 
           old = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
-            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
-            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
-            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
-            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
+                      val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
+                      val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+                      val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
+                      val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
 
-            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
+                      val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
 
-            constrain(gameView) {
-                width = Dimension.fillToConstraints
-                height = Dimension.fillToConstraints
-                top.linkTo(parent.top)
-                absoluteLeft.linkTo(parent.absoluteLeft)
-                absoluteRight.linkTo(parent.absoluteRight)
-                bottom.linkTo(leftPad.top)
-            }'''
+                      constrain(gameView) {
+                          width = Dimension.fillToConstraints
+                          height = Dimension.fillToConstraints
+                          top.linkTo(parent.top)
+                          absoluteLeft.linkTo(parent.absoluteLeft)
+                          absoluteRight.linkTo(parent.absoluteRight)
+                          bottom.linkTo(leftPad.top)
+                      }'''
+
           new = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
-            val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)
-            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
-            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
-            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
-            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
+                      val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)
+                      val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
+                      val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+                      val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
+                      val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
 
-            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
+                      val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
 
-            constrain(gameBezel) {
-                width = Dimension.fillToConstraints
-                height = Dimension.ratio("6:5")
-                top.linkTo(parent.top, margin = 18.dp)
-                absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)
-                absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)
-            }
+                      constrain(gameBezel) {
+                          width = Dimension.fillToConstraints
+                          height = Dimension.ratio("6:5")
+                          top.linkTo(parent.top, margin = 18.dp)
+                          absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)
+                          absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)
+                      }
 
-            constrain(gameView) {
-                width = Dimension.fillToConstraints
-                height = Dimension.ratio("4:3")
-                top.linkTo(gameBezel.top, margin = 42.dp)
-                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)
-                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)
-            }'''
+                      constrain(gameView) {
+                          width = Dimension.fillToConstraints
+                          height = Dimension.ratio("4:3")
+                          top.linkTo(gameBezel.top, margin = 42.dp)
+                          absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)
+                          absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)
+                      }'''
+
           if old not in s:
               raise SystemExit("Portrait layout block not found")
-          s = s.replace(old, new)
+          s = s.replace(old, new, 1)
 
-          s = s.replace(
-              '''            constrain(rightPad) {
-                width = Dimension.fillToConstraints
-                bottom.linkTo(parent.bottom)
-            }
+          old_pads = '''            constrain(rightPad) {
+                          width = Dimension.fillToConstraints
+                          bottom.linkTo(parent.bottom)
+                      }
 
-            constrain(leftPad) {
-                width = Dimension.fillToConstraints
-                bottom.linkTo(parent.bottom)
-            }''',
-              '''            constrain(rightPad) {
-                width = Dimension.fillToConstraints
-                bottom.linkTo(parent.bottom, margin = 36.dp)
-            }
+                      constrain(leftPad) {
+                          width = Dimension.fillToConstraints
+                          bottom.linkTo(parent.bottom)
+                      }'''
+          new_pads = '''            constrain(rightPad) {
+                          width = Dimension.fillToConstraints
+                          bottom.linkTo(parent.bottom, margin = 36.dp)
+                      }
 
-            constrain(leftPad) {
-                width = Dimension.fillToConstraints
-                bottom.linkTo(parent.bottom, margin = 36.dp)
-            }'''
-          )
+                      constrain(leftPad) {
+                          width = Dimension.fillToConstraints
+                          bottom.linkTo(parent.bottom, margin = 36.dp)
+                      }'''
+          if old_pads not in s:
+              raise SystemExit("Portrait pad block not found")
+          s = s.replace(old_pads, new_pads, 1)
           p.write_text(s)
 
+          # Draw a neutral grey retro-handheld bezel behind the NES viewport.
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
           s = p.read_text()
+
           s = s.replace(
-              'import androidx.compose.foundation.layout.Arrangement\n',
-              'import androidx.compose.foundation.background\n'
-              'import androidx.compose.foundation.border\n'
-              'import androidx.compose.foundation.layout.Arrangement\n'
+          '''import androidx.compose.foundation.layout.Arrangement''',
+          '''import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.layout.Arrangement''',
           )
           s = s.replace(
-              'import androidx.compose.ui.graphics.vector.ImageVector\n',
-              'import androidx.compose.ui.graphics.Color\n'
-              'import androidx.compose.ui.graphics.vector.ImageVector\n'
+          '''import androidx.compose.ui.graphics.vector.ImageVector''',
+          '''import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.vector.ImageVector''',
           )
           s = s.replace(
-              'import androidx.compose.ui.unit.dp\n',
-              'import androidx.compose.ui.unit.dp\n'
-              'import androidx.compose.foundation.shape.RoundedCornerShape\n'
+          '''import androidx.compose.ui.unit.dp''',
+          '''import androidx.compose.ui.unit.dp
+          import androidx.compose.foundation.shape.RoundedCornerShape''',
           )
 
           marker = '''            ConstraintLayout(
-                modifier = Modifier.fillMaxSize(),
-                constraintSet =
-                    GameScreenLayout.buildConstraintSet(
-                        isLandscape,
-                        currentControllerConfig?.allowTouchOverlay ?: true,
-                    ),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
-          replacement = '''            ConstraintLayout(
-                modifier = Modifier.fillMaxSize(),
-                constraintSet =
-                    GameScreenLayout.buildConstraintSet(
-                        isLandscape,
-                        currentControllerConfig?.allowTouchOverlay ?: true,
-                    ),
-            ) {
-                if (!isLandscape) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)
-                                .background(
-                                    color = Color(0xFFB9B9B2),
-                                    shape = RoundedCornerShape(28.dp),
-                                )
-                                .border(
-                                    width = 2.dp,
-                                    color = Color(0xFF73736F),
-                                    shape = RoundedCornerShape(28.dp),
-                                ),
-                    )
-                }
+                      modifier = Modifier.fillMaxSize(),
+                      constraintSet =
+                          GameScreenLayout.buildConstraintSet(
+                              isLandscape,
+                              currentControllerConfig?.allowTouchOverlay ?: true,
+                          ),
+                  ) {
+                      Box(
+                          modifier =
+                              Modifier
+                                  .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
 
-                Box(
-                    modifier =
-                        Modifier
-                            .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
+          replacement = '''            ConstraintLayout(
+                      modifier = Modifier.fillMaxSize(),
+                      constraintSet =
+                          GameScreenLayout.buildConstraintSet(
+                              isLandscape,
+                              currentControllerConfig?.allowTouchOverlay ?: true,
+                          ),
+                  ) {
+                      if (!isLandscape) {
+                          Box(
+                              modifier =
+                                  Modifier
+                                      .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)
+                                      .background(
+                                          color = Color(0xFFB9B9B2),
+                                          shape = RoundedCornerShape(28.dp),
+                                      )
+                                      .border(
+                                          width = 2.dp,
+                                          color = Color(0xFF73736F),
+                                          shape = RoundedCornerShape(28.dp),
+                                      ),
+                          )
+                      }
+
+                      Box(
+                          modifier =
+                              Modifier
+                                  .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
+
           if marker not in s:
               raise SystemExit("ConstraintLayout insertion point not found")
-          s = s.replace(marker, replacement)
+          s = s.replace(marker, replacement, 1)
           p.write_text(s)
 
+          # Preserve the crisp pixel scaler the user preferred.
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
-          s = p.read_text().replace("SystemID.NES -> ShaderConfig.CRT", "SystemID.NES -> ShaderConfig.Sharp")
+          s = p.read_text().replace(
+              "SystemID.NES -> ShaderConfig.CRT",
+              "SystemID.NES -> ShaderConfig.Sharp",
+          )
           p.write_text(s)
           PY
 
