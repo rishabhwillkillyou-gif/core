@@ -1,4 +1,4 @@
-name: Build NES V3 Portrait
+name: Build NES V4 Handheld
 
 on:
   workflow_dispatch:
@@ -39,7 +39,69 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Replace NES touch layout
+      - name: Remove notification onboarding card
+        shell: bash
+        run: |
+          set -euxo pipefail
+          HOMEVM=/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/home/HomeViewModel.kt
+          sed -i 's/showNoNotificationPermissionCard = !notificationsPermissionEnabled/showNoNotificationPermissionCard = false/' "$HOMEVM"
+          grep -n "showNoNotificationPermissionCard" "$HOMEVM"
+
+      - name: Force working FCEUmm turbo
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt")
+          s = p.read_text()
+
+          old = 'variables = gameData.coreVariables.map { Variable(it.key, it.value) }.toTypedArray()'
+          new = '''variables =
+                (
+                    gameData.coreVariables
+                        .filterNot { it.key == "fceumm_turbo_enable" || it.key == "fceumm_turbo_delay" }
+                        .map { Variable(it.key, it.value) } +
+                        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
+                            listOf(
+                                Variable("fceumm_turbo_enable", "Player 1"),
+                                Variable("fceumm_turbo_delay", "2"),
+                            )
+                        } else {
+                            emptyList()
+                        }
+                ).toTypedArray()'''
+          if old not in s:
+              raise SystemExit("Initial core variable block not found")
+          s = s.replace(old, new)
+
+          old = '''val updatedVariables =
+            options.map { Variable(it.key, it.value) }
+                .toTypedArray()'''
+          new = '''val updatedVariables =
+            (
+                options
+                    .filterNot { it.key == "fceumm_turbo_enable" || it.key == "fceumm_turbo_delay" }
+                    .map { Variable(it.key, it.value) } +
+                    if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
+                        listOf(
+                            Variable("fceumm_turbo_enable", "Player 1"),
+                            Variable("fceumm_turbo_delay", "2"),
+                        )
+                    } else {
+                        emptyList()
+                    }
+            ).toTypedArray()'''
+          if old not in s:
+              raise SystemExit("Runtime core variable block not found")
+          s = s.replace(old, new)
+
+          p.write_text(s)
+          PY
+          grep -n -A18 "fceumm_turbo_enable" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt
+
+      - name: Replace NES controller with handheld layout
         shell: bash
         run: |
           set -euxo pipefail
@@ -50,20 +112,20 @@ jobs:
           import androidx.compose.runtime.Composable
           import androidx.compose.runtime.State
           import androidx.compose.ui.Modifier
+          import androidx.compose.ui.geometry.Offset
           import com.swordfish.touchinput.radial.controls.LemuroidControlButton
           import com.swordfish.touchinput.radial.controls.LemuroidControlCross
           import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
           import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
           import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
-          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenuPlaceholder
-          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonSelect
-          import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
           import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
           import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
           import gg.padkit.PadKitScope
+          import gg.padkit.anchors.Anchor
           import gg.padkit.ids.Id
           import kotlinx.collections.immutable.persistentListOf
           import kotlinx.collections.immutable.persistentMapOf
+          import kotlinx.collections.immutable.persistentSetOf
 
           @Composable
           fun PadKitScope.NESLeft(
@@ -73,10 +135,17 @@ jobs:
               BaseLayoutLeft(
                   settings = settings,
                   modifier = modifier,
-                  primaryDial = { LemuroidControlCross(id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD)) },
+                  primaryDial = {
+                      LemuroidControlCross(
+                          id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD),
+                      )
+                  },
                   secondaryDials = {
-                      SecondaryButtonSelect()
-                      SecondaryButtonMenuPlaceholder(settings)
+                      LemuroidControlButton(
+                          modifier = Modifier.radialPosition(15f).radialScale(0.88f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
+                          label = "SELECT",
+                      )
                   },
               )
           }
@@ -91,45 +160,59 @@ jobs:
                   modifier = modifier,
                   primaryDial = {
                       LemuroidControlFaceButtons(
-                          ids =
+                          primaryAnchors =
                               persistentListOf(
-                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A),
-                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B),
+                                  Anchor(
+                                      Offset(1f, 0f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_A)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(0f, 1f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_B)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(-1f, 0f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_Y)),
+                                      0.38f,
+                                  ),
+                                  Anchor(
+                                      Offset(0f, -1f),
+                                      persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_X)),
+                                      0.38f,
+                                  ),
                               ),
                           idsForegrounds =
                               persistentMapOf<Id.Key, @Composable (State<Boolean>) -> Unit>(
-                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A) to { LemuroidButtonForeground(pressed = it, label = "A") },
-                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B) to { LemuroidButtonForeground(pressed = it, label = "B") },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_A) to {
+                                      LemuroidButtonForeground(pressed = it, label = "A")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_B) to {
+                                      LemuroidButtonForeground(pressed = it, label = "B")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_Y) to {
+                                      LemuroidButtonForeground(pressed = it, label = "TB")
+                                  },
+                                  Id.Key(KeyEvent.KEYCODE_BUTTON_X) to {
+                                      LemuroidButtonForeground(pressed = it, label = "TA")
+                                  },
                               ),
                       )
                   },
                   secondaryDials = {
                       LemuroidControlButton(
-                          modifier = Modifier.radialPosition(118f),
-                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_Y),
-                          label = "TB",
+                          modifier = Modifier.radialPosition(165f).radialScale(0.88f),
+                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
+                          label = "START",
                       )
-                      LemuroidControlButton(
-                          modifier = Modifier.radialPosition(158f),
-                          id = Id.Key(KeyEvent.KEYCODE_BUTTON_X),
-                          label = "TA",
-                      )
-                      SecondaryButtonStart()
                       SecondaryButtonMenu(settings)
                   },
               )
           }
           KOT
 
-      - name: Label Select and Start
-        shell: bash
-        run: |
-          set -euxo pipefail
-          CONTROLS=/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/shared/Controls.kt
-          sed -i 's/icon = R.drawable.button_select/label = "SELECT"/' "$CONTROLS"
-          sed -i 's/icon = R.drawable.button_start/label = "START"/' "$CONTROLS"
-
-      - name: Move portrait game to top and keep sharp rendering
+      - name: Add handheld screen bezel and tighten portrait spacing
         shell: bash
         run: |
           set -euxo pipefail
@@ -138,24 +221,145 @@ jobs:
 
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
           s = p.read_text()
-          old = """            constrain(gameView) {
-                          width = Dimension.fillToConstraints
-                          height = Dimension.fillToConstraints
-                          top.linkTo(parent.top)
-                          absoluteLeft.linkTo(parent.absoluteLeft)
-                          absoluteRight.linkTo(parent.absoluteRight)
-                          bottom.linkTo(leftPad.top)
-                      }"""
-          new = """            constrain(gameView) {
-                          width = Dimension.fillToConstraints
-                          height = Dimension.ratio("4:3")
-                          top.linkTo(parent.top)
-                          absoluteLeft.linkTo(parent.absoluteLeft)
-                          absoluteRight.linkTo(parent.absoluteRight)
-                      }"""
+          s = s.replace(
+              'import androidx.constraintlayout.compose.Dimension\n',
+              'import androidx.constraintlayout.compose.Dimension\nimport androidx.compose.ui.unit.dp\n'
+          )
+          s = s.replace(
+              'const val CONSTRAINTS_GAME_VIEW = "gameView"\n',
+              'const val CONSTRAINTS_GAME_VIEW = "gameView"\n    const val CONSTRAINTS_GAME_BEZEL = "gameBezel"\n'
+          )
+
+          old = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
+            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
+            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
+            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
+
+            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
+
+            constrain(gameView) {
+                width = Dimension.fillToConstraints
+                height = Dimension.fillToConstraints
+                top.linkTo(parent.top)
+                absoluteLeft.linkTo(parent.absoluteLeft)
+                absoluteRight.linkTo(parent.absoluteRight)
+                bottom.linkTo(leftPad.top)
+            }'''
+          new = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
+            val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)
+            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
+            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
+            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
+
+            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
+
+            constrain(gameBezel) {
+                width = Dimension.fillToConstraints
+                height = Dimension.ratio("6:5")
+                top.linkTo(parent.top, margin = 18.dp)
+                absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)
+                absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)
+            }
+
+            constrain(gameView) {
+                width = Dimension.fillToConstraints
+                height = Dimension.ratio("4:3")
+                top.linkTo(gameBezel.top, margin = 42.dp)
+                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)
+                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)
+            }'''
           if old not in s:
-              raise SystemExit("portrait gameView block not found")
-          p.write_text(s.replace(old, new))
+              raise SystemExit("Portrait layout block not found")
+          s = s.replace(old, new)
+
+          s = s.replace(
+              '''            constrain(rightPad) {
+                width = Dimension.fillToConstraints
+                bottom.linkTo(parent.bottom)
+            }
+
+            constrain(leftPad) {
+                width = Dimension.fillToConstraints
+                bottom.linkTo(parent.bottom)
+            }''',
+              '''            constrain(rightPad) {
+                width = Dimension.fillToConstraints
+                bottom.linkTo(parent.bottom, margin = 36.dp)
+            }
+
+            constrain(leftPad) {
+                width = Dimension.fillToConstraints
+                bottom.linkTo(parent.bottom, margin = 36.dp)
+            }'''
+          )
+          p.write_text(s)
+
+          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
+          s = p.read_text()
+          s = s.replace(
+              'import androidx.compose.foundation.layout.Arrangement\n',
+              'import androidx.compose.foundation.background\n'
+              'import androidx.compose.foundation.border\n'
+              'import androidx.compose.foundation.layout.Arrangement\n'
+          )
+          s = s.replace(
+              'import androidx.compose.ui.graphics.vector.ImageVector\n',
+              'import androidx.compose.ui.graphics.Color\n'
+              'import androidx.compose.ui.graphics.vector.ImageVector\n'
+          )
+          s = s.replace(
+              'import androidx.compose.ui.unit.dp\n',
+              'import androidx.compose.ui.unit.dp\n'
+              'import androidx.compose.foundation.shape.RoundedCornerShape\n'
+          )
+
+          marker = '''            ConstraintLayout(
+                modifier = Modifier.fillMaxSize(),
+                constraintSet =
+                    GameScreenLayout.buildConstraintSet(
+                        isLandscape,
+                        currentControllerConfig?.allowTouchOverlay ?: true,
+                    ),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
+          replacement = '''            ConstraintLayout(
+                modifier = Modifier.fillMaxSize(),
+                constraintSet =
+                    GameScreenLayout.buildConstraintSet(
+                        isLandscape,
+                        currentControllerConfig?.allowTouchOverlay ?: true,
+                    ),
+            ) {
+                if (!isLandscape) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)
+                                .background(
+                                    color = Color(0xFFB9B9B2),
+                                    shape = RoundedCornerShape(28.dp),
+                                )
+                                .border(
+                                    width = 2.dp,
+                                    color = Color(0xFF73736F),
+                                    shape = RoundedCornerShape(28.dp),
+                                ),
+                    )
+                }
+
+                Box(
+                    modifier =
+                        Modifier
+                            .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'''
+          if marker not in s:
+              raise SystemExit("ConstraintLayout insertion point not found")
+          s = s.replace(marker, replacement)
+          p.write_text(s)
 
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
           s = p.read_text().replace("SystemID.NES -> ShaderConfig.CRT", "SystemID.NES -> ShaderConfig.Sharp")
@@ -176,13 +380,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V3-Portrait.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V3-Portrait.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V4-Handheld.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V4-Handheld.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V3-Portrait
-          path: NESMultiplayer-V3-Portrait.apk
+          name: NESMultiplayer-V4-Handheld
+          path: NESMultiplayer-V4-Handheld.apk
           if-no-files-found: error
           retention-days: 7
