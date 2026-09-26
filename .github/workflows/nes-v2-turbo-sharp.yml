@@ -39,33 +39,30 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Remove notification onboarding card
-        shell: bash
-        run: |
-          set -euxo pipefail
-          HOMEVM=/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/home/HomeViewModel.kt
-          sed -i 's/showNoNotificationPermissionCard = !notificationsPermissionEnabled/showNoNotificationPermissionCard = false/' "$HOMEVM"
-          grep -n "showNoNotificationPermissionCard" "$HOMEVM"
-
-      - name: Bypass notification launch gate
+      - name: Remove notification requirement
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/GameInteractor.kt")
-          s = p.read_text()
-          gate = '''        if (!ensureNotificationsPermissionAvailable()) {
-              return
-          }
-  '''
+
+          home = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/home/HomeViewModel.kt")
+          s = home.read_text()
+          s = s.replace(
+              "showNoNotificationPermissionCard = !notificationsPermissionEnabled",
+              "showNoNotificationPermissionCard = false",
+          )
+          home.write_text(s)
+
+          interactor = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/GameInteractor.kt")
+          s = interactor.read_text()
+          gate = "        if (!ensureNotificationsPermissionAvailable()) {\n            return\n        }\n"
           count = s.count(gate)
-          if count < 2:
-              raise SystemExit(f"Expected two notification gates, found {count}")
+          if count != 2:
+              raise SystemExit(f"Expected two notification launch gates, found {count}")
           s = s.replace(gate, "")
-          p.write_text(s)
+          interactor.write_text(s)
           PY
-          grep -n -A12 "fun onGamePlay" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/GameInteractor.kt
 
       - name: Force working FCEUmm turbo
         shell: bash
@@ -77,7 +74,6 @@ jobs:
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt")
           s = p.read_text()
 
-          # Supply working turbo settings from the moment FCEUmm is created.
           old = 'variables = gameData.coreVariables.map { Variable(it.key, it.value) }.toTypedArray()'
           new = '''variables =
                 (
@@ -97,10 +93,8 @@ jobs:
               raise SystemExit("Initial core variable assignment not found")
           s = s.replace(old, new, 1)
 
-          # Lemuroid reapplies stored core options after startup. Let it do so,
-          # then force our NES turbo settings again so "None" cannot overwrite them.
           marker = '        retroGameView?.updateVariables(*updatedVariables)'
-          replacement = chr(10).join([
+          replacement = '\n'.join([
               '        retroGameView?.updateVariables(*updatedVariables)',
               '',
               '        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {',
@@ -113,12 +107,10 @@ jobs:
           if marker not in s:
               raise SystemExit("Runtime updateVariables call not found")
           s = s.replace(marker, replacement, 1)
-
           p.write_text(s)
           PY
-          grep -n -A8 -B3 "fceumm_turbo_enable" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt
 
-      - name: Replace NES controller with handheld layout
+      - name: Replace NES controller layout
         shell: bash
         run: |
           set -euxo pipefail
@@ -159,7 +151,7 @@ jobs:
                   },
                   secondaryDials = {
                       LemuroidControlButton(
-                          modifier = Modifier.radialPosition(15f).radialScale(0.88f),
+                          modifier = Modifier.radialPosition(330f).radialScale(1.10f),
                           id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
                           label = "SELECT",
                       )
@@ -219,7 +211,7 @@ jobs:
                   },
                   secondaryDials = {
                       LemuroidControlButton(
-                          modifier = Modifier.radialPosition(165f).radialScale(0.88f),
+                          modifier = Modifier.radialPosition(210f).radialScale(1.10f),
                           id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
                           label = "START",
                       )
@@ -229,302 +221,201 @@ jobs:
           }
           KOT
 
-      - name: Add handheld screen bezel and tighten portrait spacing
+      - name: Build SUP inspired handheld shell
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          # Portrait constraint layout: add a handheld bezel, lower the
-          # screen slightly inside it, and lift the controls ~1 cm.
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
-          s = p.read_text()
-
+          layout = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
+          s = layout.read_text()
           s = s.replace(
-          '''import androidx.constraintlayout.compose.Dimension''',
-          '''import androidx.constraintlayout.compose.Dimension
-          import androidx.compose.ui.unit.dp''',
+              "import androidx.constraintlayout.compose.Dimension",
+              "import androidx.constraintlayout.compose.Dimension\nimport androidx.compose.ui.unit.dp",
+              1,
+          )
+          s = s.replace(
+              '    const val CONSTRAINTS_GAME_VIEW = "gameView"',
+              '    const val CONSTRAINTS_GAME_VIEW = "gameView"\n    const val CONSTRAINTS_GAME_BEZEL = "gameBezel"',
+              1,
           )
 
-          s = s.replace(
-          '''    const val CONSTRAINTS_GAME_VIEW = "gameView"''',
-          '''    const val CONSTRAINTS_GAME_VIEW = "gameView"
-              const val CONSTRAINTS_GAME_BEZEL = "gameBezel"''',
-          )
-
-          old = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
-                      val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
-                      val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
-                      val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
-                      val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
-
-                      val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
-
-                      constrain(gameView) {
-                          width = Dimension.fillToConstraints
-                          height = Dimension.fillToConstraints
-                          top.linkTo(parent.top)
-                          absoluteLeft.linkTo(parent.absoluteLeft)
-                          absoluteRight.linkTo(parent.absoluteRight)
-                          bottom.linkTo(leftPad.top)
-                      }'''
-
-          new = '''            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
-                      val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)
-                      val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
-                      val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
-                      val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
-                      val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
-
-                      val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
-
-                      constrain(gameBezel) {
-                          width = Dimension.fillToConstraints
-                          height = Dimension.ratio("6:5")
-                          top.linkTo(parent.top, margin = 18.dp)
-                          absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)
-                          absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)
-                      }
-
-                      constrain(gameView) {
-                          width = Dimension.fillToConstraints
-                          height = Dimension.ratio("4:3")
-                          top.linkTo(gameBezel.top, margin = 42.dp)
-                          absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)
-                          absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)
-                      }'''
-
+          old = "\n".join([
+              "            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)",
+              "            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)",
+              "            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)",
+              "            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)",
+              "            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)",
+              "",
+              "            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)",
+              "",
+              "            constrain(gameView) {",
+              "                width = Dimension.fillToConstraints",
+              "                height = Dimension.fillToConstraints",
+              "                top.linkTo(parent.top)",
+              "                absoluteLeft.linkTo(parent.absoluteLeft)",
+              "                absoluteRight.linkTo(parent.absoluteRight)",
+              "                bottom.linkTo(leftPad.top)",
+              "            }",
+          ])
+          new = "\n".join([
+              "            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)",
+              "            val gameBezel = createRefFor(CONSTRAINTS_GAME_BEZEL)",
+              "            val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)",
+              "            val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)",
+              "            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)",
+              "            val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)",
+              "",
+              "            val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)",
+              "",
+              "            constrain(gameBezel) {",
+              "                width = Dimension.fillToConstraints",
+              '                height = Dimension.ratio("6:5")',
+              "                top.linkTo(parent.top, margin = 18.dp)",
+              "                absoluteLeft.linkTo(parent.absoluteLeft, margin = 10.dp)",
+              "                absoluteRight.linkTo(parent.absoluteRight, margin = 10.dp)",
+              "            }",
+              "",
+              "            constrain(gameView) {",
+              "                width = Dimension.fillToConstraints",
+              '                height = Dimension.ratio("4:3")',
+              "                top.linkTo(gameBezel.top, margin = 42.dp)",
+              "                absoluteLeft.linkTo(gameBezel.absoluteLeft, margin = 22.dp)",
+              "                absoluteRight.linkTo(gameBezel.absoluteRight, margin = 22.dp)",
+              "            }",
+          ])
           if old not in s:
-              raise SystemExit("Portrait layout block not found")
+              raise SystemExit("Portrait game block not found")
           s = s.replace(old, new, 1)
 
-          old_pads = '''            constrain(rightPad) {
-                          width = Dimension.fillToConstraints
-                          bottom.linkTo(parent.bottom)
-                      }
+          s = s.replace(
+              "                top.linkTo(leftPad.top)",
+              "                top.linkTo(gameBezel.bottom)",
+              1,
+          )
 
-                      constrain(leftPad) {
-                          width = Dimension.fillToConstraints
-                          bottom.linkTo(parent.bottom)
-                      }'''
-          new_pads = '''            constrain(rightPad) {
-                          width = Dimension.fillToConstraints
-                          bottom.linkTo(parent.bottom, margin = 36.dp)
-                      }
-
-                      constrain(leftPad) {
-                          width = Dimension.fillToConstraints
-                          bottom.linkTo(parent.bottom, margin = 36.dp)
-                      }'''
-          if old_pads not in s:
+          pad_old = "\n".join([
+              "            constrain(rightPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                bottom.linkTo(parent.bottom)",
+              "            }",
+              "",
+              "            constrain(leftPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                bottom.linkTo(parent.bottom)",
+              "            }",
+          ])
+          pad_new = "\n".join([
+              "            constrain(rightPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                top.linkTo(gameBezel.bottom, margin = 16.dp)",
+              "                bottom.linkTo(parent.bottom, margin = 24.dp)",
+              "                verticalBias = 0.78f",
+              "            }",
+              "",
+              "            constrain(leftPad) {",
+              "                width = Dimension.fillToConstraints",
+              "                top.linkTo(gameBezel.bottom, margin = 16.dp)",
+              "                bottom.linkTo(parent.bottom, margin = 24.dp)",
+              "                verticalBias = 0.78f",
+              "            }",
+          ])
+          if pad_old not in s:
               raise SystemExit("Portrait pad block not found")
-          s = s.replace(old_pads, new_pads, 1)
-          p.write_text(s)
+          s = s.replace(pad_old, pad_new, 1)
+          layout.write_text(s)
 
-          # Draw a neutral grey retro-handheld bezel behind the NES viewport.
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
-          s = p.read_text()
-
+          screen = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
+          s = screen.read_text()
           s = s.replace(
-          '''import androidx.compose.foundation.layout.Arrangement''',
-          '''import androidx.compose.foundation.background
-          import androidx.compose.foundation.border
-          import androidx.compose.foundation.layout.Arrangement''',
+              "import androidx.compose.foundation.layout.Arrangement",
+              "import androidx.compose.foundation.border\nimport androidx.compose.foundation.layout.Arrangement",
+              1,
           )
           s = s.replace(
-          '''import androidx.compose.ui.graphics.vector.ImageVector''',
-          '''import androidx.compose.ui.graphics.Color
-          import androidx.compose.ui.graphics.vector.ImageVector''',
+              "import androidx.compose.ui.draw.rotate",
+              "import androidx.compose.ui.draw.rotate\nimport androidx.compose.ui.draw.drawBehind",
+              1,
           )
           s = s.replace(
-          '''import androidx.compose.ui.unit.dp''',
-          '''import androidx.compose.ui.unit.dp
-          import androidx.compose.foundation.shape.RoundedCornerShape''',
+              "import androidx.compose.ui.geometry.Rect",
+              "import androidx.compose.ui.geometry.Rect\nimport androidx.compose.ui.geometry.Offset\nimport androidx.compose.ui.geometry.Size",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.graphics.vector.ImageVector",
+              "import androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.graphics.vector.ImageVector",
+              1,
+          )
+          s = s.replace(
+              "import androidx.compose.ui.unit.dp",
+              "import androidx.compose.ui.unit.dp\nimport androidx.compose.foundation.shape.RoundedCornerShape",
+              1,
           )
 
-          # Insert the bezel immediately before the Box that defines the
-          # emulation viewport. This is resilient to upstream formatting changes.
-          viewport_token = '.layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)'
+          viewport_token = ".layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)"
           viewport_index = s.find(viewport_token)
           if viewport_index < 0:
               raise SystemExit("Game viewport token not found")
-          box_index = s.rfind('                Box(', 0, viewport_index)
+          box_index = s.rfind("                Box(", 0, viewport_index)
           if box_index < 0:
               raise SystemExit("Game viewport Box not found")
 
-          bezel = chr(10).join([
-              '                if (!isLandscape) {',
-              '                    Box(',
-              '                        modifier =',
-              '                            Modifier',
-              '                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)',
-              '                                .background(',
-              '                                    color = Color(0xFFB9B9B2),',
-              '                                    shape = RoundedCornerShape(28.dp),',
-              '                                )',
-              '                                .border(',
-              '                                    width = 2.dp,',
-              '                                    color = Color(0xFF73736F),',
-              '                                    shape = RoundedCornerShape(28.dp),',
-              '                                ),',
-              '                    )',
-              '                }',
-              '',
+          bezel = "\n".join([
+              "                if (!isLandscape) {",
+              "                    Box(",
+              "                        modifier =",
+              "                            Modifier",
+              "                                .layoutId(GameScreenLayout.CONSTRAINTS_GAME_BEZEL)",
+              "                                .drawBehind {",
+              "                                    val body = Color(0xFFB52B38)",
+              "                                    val side = 22.dp.toPx()",
+              "                                    val topFrame = 42.dp.toPx()",
+              "                                    val bottomFrame = 44.dp.toPx()",
+              "                                    drawRect(body, Offset.Zero, Size(size.width, topFrame))",
+              "                                    drawRect(body, Offset(0f, size.height - bottomFrame), Size(size.width, bottomFrame))",
+              "                                    drawRect(body, Offset(0f, topFrame), Size(side, size.height - topFrame - bottomFrame))",
+              "                                    drawRect(body, Offset(size.width - side, topFrame), Size(side, size.height - topFrame - bottomFrame))",
+              "                                }",
+              "                                .border(",
+              "                                    width = 2.dp,",
+              "                                    color = Color(0xFF68131D),",
+              "                                    shape = RoundedCornerShape(28.dp),",
+              "                                ),",
+              "                    )",
+              "                }",
+              "",
           ])
           s = s[:box_index] + bezel + s[box_index:]
-          p.write_text(s)
 
-          # Preserve the crisp pixel scaler the user preferred.
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
-          s = p.read_text().replace(
-              "SystemID.NES -> ShaderConfig.CRT",
-              "SystemID.NES -> ShaderConfig.Sharp",
-          )
-          p.write_text(s)
-          PY
-
-      - name: SUP-style final UI corrections
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          # 1) Controller: SUP-inspired geometry.
-          #    D-pad left, four action/turbo buttons in a diamond right,
-          #    SELECT/START lower and toward the centre.
-          p = Path("/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NES.kt")
-          s = p.read_text()
-          s = s.replace('Modifier.radialPosition(15f).radialScale(0.88f)',
-                        'Modifier.radialPosition(330f).radialScale(1.10f)')
-          s = s.replace('Modifier.radialPosition(165f).radialScale(0.88f)',
-                        'Modifier.radialPosition(210f).radialScale(1.10f)')
-          p.write_text(s)
-
-          # 2) Screen frame: do NOT paint a solid rectangle over the GL game.
-          #    Draw only four bezel strips, leaving a transparent opening.
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/MobileGameScreen.kt")
-          s = p.read_text()
-          if 'import androidx.compose.ui.draw.drawBehind' not in s:
-              s = s.replace(
-                  'import androidx.compose.ui.draw.rotate',
-                  'import androidx.compose.ui.draw.rotate\nimport androidx.compose.ui.draw.drawBehind',
-              )
           s = s.replace(
-              'import androidx.compose.ui.geometry.Rect',
-              'import androidx.compose.ui.geometry.Rect\nimport androidx.compose.ui.geometry.Offset\nimport androidx.compose.ui.geometry.Size',
-          )
-
-          solid = '''                                .background(
-                                      color = Color(0xFFB9B9B2),
-                                      shape = RoundedCornerShape(28.dp),
-                                  )
-                                  .border(
-                                      width = 2.dp,
-                                      color = Color(0xFF73736F),
-                                      shape = RoundedCornerShape(28.dp),
-                                  ),'''
-          framed = '''                                .drawBehind {
-                                      val body = Color(0xFFB52B38)
-                                      val side = 22.dp.toPx()
-                                      val topFrame = 42.dp.toPx()
-                                      val bottomFrame = 44.dp.toPx()
-
-                                      drawRect(
-                                          color = body,
-                                          topLeft = Offset.Zero,
-                                          size = Size(size.width, topFrame),
-                                      )
-                                      drawRect(
-                                          color = body,
-                                          topLeft = Offset(0f, size.height - bottomFrame),
-                                          size = Size(size.width, bottomFrame),
-                                      )
-                                      drawRect(
-                                          color = body,
-                                          topLeft = Offset(0f, topFrame),
-                                          size = Size(side, size.height - topFrame - bottomFrame),
-                                      )
-                                      drawRect(
-                                          color = body,
-                                          topLeft = Offset(size.width - side, topFrame),
-                                          size = Size(side, size.height - topFrame - bottomFrame),
-                                      )
-                                  }
-                                  .border(
-                                      width = 2.dp,
-                                      color = Color(0xFF68131D),
-                                      shape = RoundedCornerShape(28.dp),
-                                  ),'''
-          if solid not in s:
-              raise SystemExit("Solid bezel block not found")
-          s = s.replace(solid, framed, 1)
-
-          # Red handheld lower deck, inspired by the reference but unbranded.
-          s = s.replace(
-              'cornerRadius = theme.level0CornerRadius,\n        fillColor = theme.level0Fill,',
-              'cornerRadius = 28.dp,\n        fillColor = Color(0xFFB52B38),',
+              "cornerRadius = theme.level0CornerRadius,\n        fillColor = theme.level0Fill,",
+              "cornerRadius = 28.dp,\n        fillColor = Color(0xFFB52B38),",
               1,
           )
-          p.write_text(s)
+          screen.write_text(s)
 
-          # 3) Reduce the dead gap: let the deck start just under the screen,
-          #    and raise the pads modestly without pushing them too high.
-          p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/mobile/feature/game/GameScreenLayout.kt")
-          s = p.read_text()
-          s = s.replace(
-              '''                top.linkTo(leftPad.top)
-                  bottom.linkTo(parent.bottom)''',
-              '''                top.linkTo(gameBezel.bottom, margin = 12.dp)
-                  bottom.linkTo(parent.bottom)''',
-              1,
-          )
-          s = s.replace(
-              '''            constrain(rightPad) {
-                  width = Dimension.fillToConstraints
-                  bottom.linkTo(parent.bottom, margin = 36.dp)
-              }
-
-              constrain(leftPad) {
-                  width = Dimension.fillToConstraints
-                  bottom.linkTo(parent.bottom, margin = 36.dp)
-              }''',
-              '''            constrain(rightPad) {
-                  width = Dimension.fillToConstraints
-                  top.linkTo(gameBezel.bottom, margin = 16.dp)
-                  bottom.linkTo(parent.bottom, margin = 24.dp)
-                  verticalBias = 0.72f
-              }
-
-              constrain(leftPad) {
-                  width = Dimension.fillToConstraints
-                  top.linkTo(gameBezel.bottom, margin = 16.dp)
-                  bottom.linkTo(parent.bottom, margin = 24.dp)
-                  verticalBias = 0.72f
-              }''',
-              1,
-          )
-          p.write_text(s)
-
-          # 4) Dark physical-looking buttons with light labels, closer to the
-          #    SUP handheld reference while keeping our own unbranded styling.
-          p = Path("/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/LemuroidPadTheme.kt")
-          s = p.read_text()
+          theme = Path("/tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/LemuroidPadTheme.kt")
+          s = theme.read_text()
           replacements = {
-              'private val icons = gray(0.0f, 0.50f)': 'private val icons = gray(1.0f, 0.82f)',
-              'private val iconsPressed = gray(1.0f, 0.50f)': 'private val iconsPressed = gray(1.0f, 1.0f)',
-              'private val level3Fill = gray(1.0f, 0.50f)': 'private val level3Fill = gray(0.08f, 0.96f)',
-              'private val level3FillPressed = gray(0.0f, 0.50f)': 'private val level3FillPressed = gray(0.28f, 0.98f)',
-              'private val level2Fill = gray(1.0f, 0.125f)': 'private val level2Fill = gray(0.05f, 0.90f)',
-              'private val level2FillPressed = gray(0.0f, 0.125f)': 'private val level2FillPressed = gray(0.24f, 0.95f)',
-              'val level1Fill = gray(1.0f, 0.10f)': 'val level1Fill = gray(0.04f, 0.88f)',
+              "private val icons = gray(0.0f, 0.50f)": "private val icons = gray(1.0f, 0.82f)",
+              "private val iconsPressed = gray(1.0f, 0.50f)": "private val iconsPressed = gray(1.0f, 1.0f)",
+              "private val level3Fill = gray(1.0f, 0.50f)": "private val level3Fill = gray(0.08f, 0.96f)",
+              "private val level3FillPressed = gray(0.0f, 0.50f)": "private val level3FillPressed = gray(0.28f, 0.98f)",
+              "private val level2Fill = gray(1.0f, 0.125f)": "private val level2Fill = gray(0.05f, 0.90f)",
+              "private val level2FillPressed = gray(0.0f, 0.125f)": "private val level2FillPressed = gray(0.24f, 0.95f)",
+              "val level1Fill = gray(1.0f, 0.10f)": "val level1Fill = gray(0.04f, 0.88f)",
           }
           for old, new in replacements.items():
               if old not in s:
                   raise SystemExit(f"Theme token not found: {old}")
               s = s.replace(old, new, 1)
-          p.write_text(s)
+          theme.write_text(s)
+
+          shader = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
+          s = shader.read_text().replace("SystemID.NES -> ShaderConfig.CRT", "SystemID.NES -> ShaderConfig.Sharp")
+          shader.write_text(s)
           PY
 
       - name: Build dynamic debug APK
@@ -542,12 +433,12 @@ jobs:
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
           cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V5-SUP-Handheld.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V4-Handheld.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V5-SUP-Handheld.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NESMultiplayer-V5-SUP-Handheld
-          path: NESMultiplayer-V4-Handheld.apk
+          path: NESMultiplayer-V5-SUP-Handheld.apk
           if-no-files-found: error
           retention-days: 7
