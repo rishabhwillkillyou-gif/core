@@ -218,17 +218,14 @@ jobs:
                   1,
               )
 
-          old_constraint = '''                    GameScreenLayout.buildConstraintSet(
-                          isLandscape,
-                          currentControllerConfig?.allowTouchOverlay ?: true,
-                      ),'''
-          new_constraint = '''                    GameScreenLayout.buildConstraintSet(
-                          isLandscape,
-                          if (isLandscape) false else currentControllerConfig?.allowTouchOverlay ?: true,
-                      ),'''
-          if old_constraint not in s:
-              raise SystemExit("Constraint selection block not found")
-          s = s.replace(old_constraint, new_constraint, 1)
+          constraint_token = "currentControllerConfig?.allowTouchOverlay ?: true"
+          if constraint_token not in s:
+              raise SystemExit("Constraint selection token not found")
+          s = s.replace(
+              constraint_token,
+              "if (isLandscape) false else currentControllerConfig?.allowTouchOverlay ?: true",
+              1,
+          )
 
           old_controls = '''                        if (!isLandscape) {
                               PadContainer(
