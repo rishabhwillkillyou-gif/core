@@ -33,21 +33,21 @@ fun PadKitScope.NESLandscapeHardwareLeft(modifier: Modifier = Modifier) {
     Column(
         modifier =
             modifier
-                .width(156.dp)
+                .width(168.dp)
                 .fillMaxHeight()
                 .padding(horizontal = 10.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         LemuroidControlCross(
-            modifier = Modifier.size(134.dp),
+            modifier = Modifier.size(150.dp),
             id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD),
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         NESLandscapeHardwareButton(
-            modifier = Modifier.width(106.dp).height(38.dp),
+            modifier = Modifier.width(126.dp).height(44.dp),
             id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
             label = "SELECT",
         )
@@ -59,35 +59,35 @@ fun PadKitScope.NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
     Column(
         modifier =
             modifier
-                .width(156.dp)
+                .width(168.dp)
                 .fillMaxHeight()
                 .padding(horizontal = 10.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         LemuroidControlFaceButtons(
-            modifier = Modifier.size(144.dp),
+            modifier = Modifier.size(156.dp),
             primaryAnchors =
                 persistentListOf(
                     Anchor(
                         Offset(-0.54f, -0.54f),
                         persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_B)),
-                        0.36f,
+                        0.42f,
                     ),
                     Anchor(
                         Offset(0.54f, -0.54f),
                         persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_Y)),
-                        0.36f,
+                        0.42f,
                     ),
                     Anchor(
                         Offset(-0.54f, 0.54f),
                         persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_A)),
-                        0.36f,
+                        0.42f,
                     ),
                     Anchor(
                         Offset(0.54f, 0.54f),
                         persistentSetOf(Id.Key(KeyEvent.KEYCODE_BUTTON_X)),
-                        0.36f,
+                        0.42f,
                     ),
                 ),
             idsForegrounds =
@@ -107,18 +107,18 @@ fun PadKitScope.NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
                 ),
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         NESLandscapeHardwareButton(
-            modifier = Modifier.width(106.dp).height(38.dp),
+            modifier = Modifier.width(126.dp).height(44.dp),
             id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
             label = "START",
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         NESLandscapeHardwareButton(
-            modifier = Modifier.width(44.dp).height(34.dp),
+            modifier = Modifier.width(52.dp).height(40.dp),
             id = Id.Key(KeyEvent.KEYCODE_BUTTON_MODE),
             label = "≡",
         )
