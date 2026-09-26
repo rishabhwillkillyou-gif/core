@@ -28,9 +28,8 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 
-context(PadKitScope)
 @Composable
-fun NESLandscapeHardwareLeft(modifier: Modifier = Modifier) {
+fun PadKitScope.NESLandscapeHardwareLeft(modifier: Modifier = Modifier) {
     Column(
         modifier =
             modifier
@@ -55,9 +54,8 @@ fun NESLandscapeHardwareLeft(modifier: Modifier = Modifier) {
     }
 }
 
-context(PadKitScope)
 @Composable
-fun NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
+fun PadKitScope.NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
     Column(
         modifier =
             modifier
@@ -127,9 +125,8 @@ fun NESLandscapeHardwareRight(modifier: Modifier = Modifier) {
     }
 }
 
-context(PadKitScope)
 @Composable
-private fun NESLandscapeHardwareButton(
+private fun PadKitScope.NESLandscapeHardwareButton(
     modifier: Modifier,
     id: Id.Key,
     label: String,
