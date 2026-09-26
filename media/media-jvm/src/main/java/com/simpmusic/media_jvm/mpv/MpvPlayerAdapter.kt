@@ -1567,7 +1567,7 @@ class MpvPlayerAdapter(
                                     // Evict stale precache
                                     precachedPlayers.remove(currentVideoId)?.player?.release()
                                     // Reload the track
-                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, 0L, shouldPlay = true)
+                                    loadAndPlayTrackInternal(localCurrentMediaItemIndex, cachedPosition, shouldPlay = true)
                                     return@launch
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
