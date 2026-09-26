@@ -1,4 +1,4 @@
-name: Build NES V8 Landscape Hardware
+name: Build NES V8.1 Landscape Embedded
 
 on:
   workflow_dispatch:
@@ -55,13 +55,24 @@ jobs:
           cp "$GITHUB_WORKSPACE/nes-v8/NESLandscapeHardware.kt" /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NESLandscapeHardware.kt
           python3 "$GITHUB_WORKSPACE/nes-v8/patch_landscape.py" /tmp/Lemuroid
 
+      - name: Prune bundled cores to NES only
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT=/tmp/Lemuroid/lemuroid-cores/bundled-cores/src/main/jniLibs
+          find "$ROOT" -type f -name "*_libretro_android.so" ! -name "libfceumm_libretro_android.so" -delete
+          echo "Bundled NES core files:"
+          find "$ROOT" -type f -name "libfceumm_libretro_android.so" -print
+          COUNT="$(find "$ROOT" -type f -name "libfceumm_libretro_android.so" | wc -l)"
+          test "$COUNT" -eq 4
+
       - name: Build APK
         shell: bash
         run: |
           set -euxo pipefail
           cd /tmp/Lemuroid
           chmod +x gradlew
-          ./gradlew :lemuroid-app:assembleFreeDynamicDebug --stacktrace --no-daemon
+          ./gradlew :lemuroid-app:assembleFreeBundleDebug --stacktrace --no-daemon
 
       - name: Collect APK
         shell: bash
@@ -69,13 +80,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V8-Landscape-Hardware.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V8-Landscape-Hardware.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V8.1-Landscape-Embedded.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V8.1-Landscape-Embedded.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V8-Landscape-Hardware
-          path: NESMultiplayer-V8-Landscape-Hardware.apk
+          name: NESMultiplayer-V8.1-Landscape-Embedded
+          path: NESMultiplayer-V8.1-Landscape-Embedded.apk
           if-no-files-found: error
           retention-days: 7
