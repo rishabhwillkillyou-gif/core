@@ -1,0 +1,47 @@
+name: Publish V8.1 APK
+
+on:
+  push:
+    branches:
+      - nes-emulator-v1-build
+    paths:
+      - ".github/workflows/publish-v8.1-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download successful V8.1 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/v81
+          gh run download 36245226021 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "NESMultiplayer-V8.1-Landscape-Embedded" \
+            --dir /tmp/v81
+          find /tmp/v81 -maxdepth 2 -type f -ls
+          test -f /tmp/v81/NESMultiplayer-V8.1-Landscape-Embedded.apk
+
+      - name: Publish prerelease APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG="nes-v8.1-embedded-test"
+          gh release delete "$TAG" --repo "${GITHUB_REPOSITORY}" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            /tmp/v81/NESMultiplayer-V8.1-Landscape-Embedded.apk \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "NES Multiplayer V8.1 Embedded Core" \
+            --notes "Test build with the FCEUmm NES core embedded in the APK. No dynamic core download is required." \
+            --prerelease
