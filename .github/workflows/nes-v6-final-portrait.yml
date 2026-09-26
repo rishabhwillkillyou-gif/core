@@ -1,4 +1,4 @@
-name: Build NES V6 Final Portrait
+name: Build NES V7 Final Handheld
 
 on:
   workflow_dispatch:
@@ -61,13 +61,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V6-Final-Portrait.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V6-Final-Portrait.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V7-Final-Handheld.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V7-Final-Handheld.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V6-Final-Portrait
-          path: NESMultiplayer-V6-Final-Portrait.apk
+          name: NESMultiplayer-V7-Final-Handheld
+          path: NESMultiplayer-V7-Final-Handheld.apk
           if-no-files-found: error
           retention-days: 7
