@@ -80,14 +80,16 @@ jobs:
           # Lemuroid reapplies stored core options after startup. Let it do so,
           # then force our NES turbo settings again so "None" cannot overwrite them.
           marker = '        retroGameView?.updateVariables(*updatedVariables)'
-          replacement = '''        retroGameView?.updateVariables(*updatedVariables)
-
-        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
-            retroGameView?.updateVariables(
-                Variable("fceumm_turbo_enable", "Player 1"),
-                Variable("fceumm_turbo_delay", "2"),
-            )
-        }'''
+          replacement = chr(10).join([
+              '        retroGameView?.updateVariables(*updatedVariables)',
+              '',
+              '        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {',
+              '            retroGameView?.updateVariables(',
+              '                Variable("fceumm_turbo_enable", "Player 1"),',
+              '                Variable("fceumm_turbo_delay", "2"),',
+              '            )',
+              '        }',
+          ])
           if marker not in s:
               raise SystemExit("Runtime updateVariables call not found")
           s = s.replace(marker, replacement, 1)
