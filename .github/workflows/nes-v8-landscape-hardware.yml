@@ -55,14 +55,20 @@ jobs:
           cp "$GITHUB_WORKSPACE/nes-v8/NESLandscapeHardware.kt" /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NESLandscapeHardware.kt
           python3 "$GITHUB_WORKSPACE/nes-v8/patch_landscape.py" /tmp/Lemuroid
 
-      - name: Prune bundled cores to NES only
+      - name: Inject bundled FCEUmm NES core
         shell: bash
         run: |
           set -euxo pipefail
           ROOT=/tmp/Lemuroid/lemuroid-cores/bundled-cores/src/main/jniLibs
-          find "$ROOT" -type f -name "*_libretro_android.so" ! -name "libfceumm_libretro_android.so" -delete
+          rm -rf "$ROOT"
+          for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
+            mkdir -p "$ROOT/$ABI"
+            curl -fL --retry 3 \
+              -o "$ROOT/$ABI/libfceumm_libretro_android.so" \
+              "https://raw.githubusercontent.com/Swordfish90/LemuroidCores/master/lemuroid_core_fceumm/src/main/jniLibs/$ABI/libfceumm_libretro_android.so"
+          done
           echo "Bundled NES core files:"
-          find "$ROOT" -type f -name "libfceumm_libretro_android.so" -print
+          find "$ROOT" -type f -name "libfceumm_libretro_android.so" -print -exec ls -lh {} \;
           COUNT="$(find "$ROOT" -type f -name "libfceumm_libretro_android.so" | wc -l)"
           test "$COUNT" -eq 4
 
