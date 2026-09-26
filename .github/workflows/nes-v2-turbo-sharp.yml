@@ -57,6 +57,7 @@ jobs:
           p = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt")
           s = p.read_text()
 
+          # Supply working turbo settings from the moment FCEUmm is created.
           old = 'variables = gameData.coreVariables.map { Variable(it.key, it.value) }.toTypedArray()'
           new = '''variables =
                 (
@@ -73,33 +74,27 @@ jobs:
                         }
                 ).toTypedArray()'''
           if old not in s:
-              raise SystemExit("Initial core variable block not found")
-          s = s.replace(old, new)
+              raise SystemExit("Initial core variable assignment not found")
+          s = s.replace(old, new, 1)
 
-          old = '''val updatedVariables =
-            options.map { Variable(it.key, it.value) }
-                .toTypedArray()'''
-          new = '''val updatedVariables =
-            (
-                options
-                    .filterNot { it.key == "fceumm_turbo_enable" || it.key == "fceumm_turbo_delay" }
-                    .map { Variable(it.key, it.value) } +
-                    if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
-                        listOf(
-                            Variable("fceumm_turbo_enable", "Player 1"),
-                            Variable("fceumm_turbo_delay", "2"),
-                        )
-                    } else {
-                        emptyList()
-                    }
-            ).toTypedArray()'''
-          if old not in s:
-              raise SystemExit("Runtime core variable block not found")
-          s = s.replace(old, new)
+          # Lemuroid reapplies stored core options after startup. Let it do so,
+          # then force our NES turbo settings again so "None" cannot overwrite them.
+          marker = '        retroGameView?.updateVariables(*updatedVariables)'
+          replacement = '''        retroGameView?.updateVariables(*updatedVariables)
+
+        if (system.id == com.swordfish.lemuroid.lib.library.SystemID.NES) {
+            retroGameView?.updateVariables(
+                Variable("fceumm_turbo_enable", "Player 1"),
+                Variable("fceumm_turbo_delay", "2"),
+            )
+        }'''
+          if marker not in s:
+              raise SystemExit("Runtime updateVariables call not found")
+          s = s.replace(marker, replacement, 1)
 
           p.write_text(s)
           PY
-          grep -n -A18 "fceumm_turbo_enable" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt
+          grep -n -A8 -B3 "fceumm_turbo_enable" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt
 
       - name: Replace NES controller with handheld layout
         shell: bash
