@@ -227,29 +227,13 @@ jobs:
               1,
           )
 
-          old_controls = '''                        if (!isLandscape) {
-                              PadContainer(
-                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_BOTTOM_CONTAINER),
-                              )
-                          } else if (!currentControllerConfig.allowTouchOverlay) {
-                              PadContainer(
-                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_CONTAINER),
-                              )
-                              PadContainer(
-                                  modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_CONTAINER),
-                              )
-                          }
-
-                          leftGamePad?.invoke(
-                              this,
-                              Modifier.layoutId(GameScreenLayout.CONSTRAINTS_LEFT_PAD),
-                              touchControllerSettings,
-                          )
-                          rightGamePad?.invoke(
-                              this,
-                              Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
-                              touchControllerSettings,
-                          )'''
+          controls_start_marker = "                        if (!isLandscape) {"
+          controls_end_marker = "                        GameScreenRunningCentralMenu("
+          composition_pos = s.find("CompositionLocalProvider(LocalLemuroidPadTheme provides LemuroidPadTheme())")
+          controls_start = s.find(controls_start_marker, composition_pos)
+          controls_end = s.find(controls_end_marker, controls_start)
+          if controls_start < 0 or controls_end < 0:
+              raise SystemExit("Control rendering region not found")
 
           new_controls = '''                        if (!isLandscape) {
                               PadContainer(
@@ -284,16 +268,15 @@ jobs:
                                   Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
                                   touchControllerSettings,
                               )
-                          }'''
+                          }
 
-          if old_controls not in s:
-              raise SystemExit("Control rendering block not found")
-          s = s.replace(old_controls, new_controls, 1)
+'''
+          s = s[:controls_start] + new_controls + s[controls_end:]
 
-          viewport = '''                        .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)
-                              .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
-                              .onGloballyPositioned { viewportPosition.value = it.boundsInRoot() },'''
-          viewport_new = '''                        .layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)
+          viewport_token = ".layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)"
+          if viewport_token not in s:
+              raise SystemExit("Viewport token not found")
+          viewport_insert = '''.layoutId(GameScreenLayout.CONSTRAINTS_GAME_VIEW)
                               .then(
                                   if (isLandscape) {
                                       Modifier.border(
@@ -304,12 +287,8 @@ jobs:
                                   } else {
                                       Modifier
                                   },
-                              )
-                              .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
-                              .onGloballyPositioned { viewportPosition.value = it.boundsInRoot() },'''
-          if viewport not in s:
-              raise SystemExit("Viewport modifier block not found")
-          s = s.replace(viewport, viewport_new, 1)
+                              )'''
+          s = s.replace(viewport_token, viewport_insert, 1)
 
           insert_point = "@Composable\nprivate fun PadContainer"
           hardware_fn = '''@Composable
