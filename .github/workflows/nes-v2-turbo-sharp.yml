@@ -1,4 +1,4 @@
-name: Build NES V5 SUP Handheld
+name: Build NES V5.1 Embedded Core
 
 on:
   workflow_dispatch:
@@ -418,13 +418,24 @@ jobs:
           shader.write_text(s)
           PY
 
-      - name: Build dynamic debug APK
+      - name: Prune bundled cores to NES only
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT=/tmp/Lemuroid/lemuroid-cores/bundled-cores/src/main/jniLibs
+          find "$ROOT" -type f -name "*_libretro_android.so" ! -name "libfceumm_libretro_android.so" -delete
+          echo "Remaining bundled cores:"
+          find "$ROOT" -type f -name "*_libretro_android.so" -print
+          COUNT="$(find "$ROOT" -type f -name "*_libretro_android.so" | wc -l)"
+          test "$COUNT" -eq 4
+
+      - name: Build bundled NES debug APK
         shell: bash
         run: |
           set -euxo pipefail
           cd /tmp/Lemuroid
           chmod +x gradlew
-          ./gradlew :lemuroid-app:assembleFreeDynamicDebug --stacktrace --no-daemon
+          ./gradlew :lemuroid-app:assembleFreeBundleDebug --stacktrace --no-daemon
 
       - name: Collect APK
         shell: bash
@@ -432,13 +443,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V5-SUP-Handheld.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V5.1-Embedded-NES-Core.apk"
           ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V5-SUP-Handheld.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V5-SUP-Handheld
+          name: NESMultiplayer-V5.1-Embedded-NES-Core
           path: NESMultiplayer-V5-SUP-Handheld.apk
           if-no-files-found: error
           retention-days: 7
