@@ -40,6 +40,9 @@ import kotlin.math.ln
 import kotlin.math.roundToInt
 
 private const val TAG = "MpvPlayerAdapter"
+private const val STALL_RECOVERY_AFTER_MS = 4_500L
+private const val STALL_RECOVERY_COOLDOWN_MS = 15_000L
+private const val STALL_PROGRESS_EPSILON_MS = 250L
 
 /**
  * mpv (libmpv via JNA) implementation of [MediaPlayerInterface].
@@ -173,8 +176,14 @@ class MpvPlayerAdapter(
     @Volatile
     private var cachedIsLoading = false
 
-    // Position update job (fallback polling for crossfade detection)
+    // Position update job (fallback polling for crossfade detection + stall watchdog)
     private var positionUpdateJob: Job? = null
+
+    @Volatile
+    private var stallRecoveryInFlight = false
+
+    @Volatile
+    private var lastStallRecoveryAtMs = 0L
 
     // Precaching system
     private data class PrecachedPlayer(
@@ -2613,6 +2622,9 @@ class MpvPlayerAdapter(
 
         positionUpdateJob =
             coroutineScope.launch {
+                var lastProgressPositionMs = cachedPosition
+                var lastProgressAtMs = System.currentTimeMillis()
+
                 while (isActive && currentPlayer != null) {
                     try {
                         if (internalState == InternalState.PLAYING ||
@@ -2635,6 +2647,74 @@ class MpvPlayerAdapter(
                                     val dur = player.length
                                     if (pos > 0) cachedPosition = pos
                                     if (dur > 0) cachedDuration = dur
+                                }
+                            }
+
+                            // Playback-stall watchdog.
+                            // cache-buffering-state is percentage of mpv's cache target, not
+                            // percentage of the whole song. If RishiFy intends to play but the
+                            // playback clock stops advancing, refresh the CDN URL in place.
+                            val nowMs = System.currentTimeMillis()
+                            val observedPositionMs = cachedPosition
+                            val progressed =
+                                observedPositionMs > lastProgressPositionMs + STALL_PROGRESS_EPSILON_MS ||
+                                    observedPositionMs + 1_000L < lastProgressPositionMs
+
+                            if (!internalPlayWhenReady ||
+                                isCrossfading ||
+                                internalState == InternalState.PREPARING ||
+                                internalState == InternalState.ENDED ||
+                                internalState == InternalState.ERROR
+                            ) {
+                                lastProgressPositionMs = observedPositionMs
+                                lastProgressAtMs = nowMs
+                            } else if (progressed) {
+                                lastProgressPositionMs = observedPositionMs
+                                lastProgressAtMs = nowMs
+                            } else if (
+                                observedPositionMs > 1_000L &&
+                                nowMs - lastProgressAtMs >= STALL_RECOVERY_AFTER_MS &&
+                                nowMs - lastStallRecoveryAtMs >= STALL_RECOVERY_COOLDOWN_MS &&
+                                !stallRecoveryInFlight
+                            ) {
+                                val stalledVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId
+                                if (stalledVideoId != null) {
+                                    val resumePositionMs = observedPositionMs
+                                    stallRecoveryInFlight = true
+                                    lastStallRecoveryAtMs = nowMs
+                                    lastProgressAtMs = nowMs
+
+                                    coroutineScope.launch {
+                                        try {
+                                            Logger.w(
+                                                TAG,
+                                                "Playback stalled at $resumePositionMs ms for $stalledVideoId; refreshing stream URL",
+                                            )
+
+                                            withContext(Dispatchers.IO) {
+                                                streamRepository.invalidateFormat(stalledVideoId)
+                                                streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$stalledVideoId")
+                                            }
+
+                                            precachedPlayers.remove(stalledVideoId)?.player?.release()
+
+                                            if (
+                                                playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId == stalledVideoId &&
+                                                internalPlayWhenReady
+                                            ) {
+                                                loadAndPlayTrackInternal(
+                                                    localCurrentMediaItemIndex,
+                                                    resumePositionMs,
+                                                    shouldPlay = true,
+                                                )
+                                            }
+                                        } catch (e: Exception) {
+                                            if (e is CancellationException) throw e
+                                            Logger.e(TAG, "Stall recovery failed: ${e.message}", e)
+                                        } finally {
+                                            stallRecoveryInFlight = false
+                                        }
+                                    }
                                 }
                             }
 
