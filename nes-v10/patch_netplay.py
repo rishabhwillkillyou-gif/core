@@ -190,10 +190,8 @@ destroy_replacement = """    override fun onDestroy() {
     }"""
 s = must_replace(s, destroy_anchor, destroy_replacement, "Activity stop netplay")
 
-const_anchor = """        private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG""""
-const_replacement = """        private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG"
-        private const val EXTRA_NETPLAY_MODE = "EXTRA_NETPLAY_MODE"
-        private const val EXTRA_NETPLAY_HOST_IP = "EXTRA_NETPLAY_HOST_IP""""
+const_anchor = '        private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG"'
+const_replacement = '''        private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG"\n        private const val EXTRA_NETPLAY_MODE = "EXTRA_NETPLAY_MODE"\n        private const val EXTRA_NETPLAY_HOST_IP = "EXTRA_NETPLAY_HOST_IP"'''
 s = must_replace(s, const_anchor, const_replacement, "Activity netplay constants")
 
 sig_anchor = """            loadSave: Boolean,
