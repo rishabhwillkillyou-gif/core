@@ -1,4 +1,4 @@
-name: Build NES V9 LAN Player 2
+name: Build NES V10 Synchronized Netplay
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
       - ".github/workflows/nes-v8-landscape-hardware.yml"
       - "nes-v6/**"
       - "nes-v8/**"
-      - "nes-v9/**"
+      - "nes-v10/**"
 
 jobs:
   build:
@@ -56,11 +56,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/nes-v8/NESLandscapeHardware.kt" /tmp/Lemuroid/lemuroid-touchinput/src/main/java/com/swordfish/touchinput/radial/layouts/NESLandscapeHardware.kt
           python3 "$GITHUB_WORKSPACE/nes-v8/patch_landscape.py" /tmp/Lemuroid
 
-      - name: Apply LAN Player 2 prototype
+      - name: Apply synchronized LAN netplay
         shell: bash
         run: |
           set -euxo pipefail
-          python3 "$GITHUB_WORKSPACE/nes-v9/patch_lan.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v9"
+          python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v10"
 
       - name: Inject bundled FCEUmm NES core
         shell: bash
@@ -93,13 +93,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V9-LAN-P2.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V9-LAN-P2.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V10-Synchronized-Netplay.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V10-Synchronized-Netplay.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V9-LAN-P2
-          path: NESMultiplayer-V9-LAN-P2.apk
+          name: NESMultiplayer-V10-Synchronized-Netplay
+          path: NESMultiplayer-V10-Synchronized-Netplay.apk
           if-no-files-found: error
           retention-days: 7
