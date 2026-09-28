@@ -33,6 +33,10 @@ object NetplayRuntimeInput {
 
     fun snapshot(): Int = mask.get()
 
+    fun clear() {
+        mask.set(0)
+    }
+
     fun setButton(
         keyCode: Int,
         pressed: Boolean,
