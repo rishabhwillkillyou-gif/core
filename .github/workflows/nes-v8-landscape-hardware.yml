@@ -1,4 +1,4 @@
-name: Build NES V10 Synchronized Netplay
+name: Build NES V10.1 Netplay Quality
 
 on:
   workflow_dispatch:
@@ -62,6 +62,12 @@ jobs:
           set -euxo pipefail
           python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v10"
 
+      - name: Apply V10.1 netplay quality fixes
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay_v101.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v10"
+
       - name: Inject bundled FCEUmm NES core
         shell: bash
         run: |
@@ -93,13 +99,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V10-Synchronized-Netplay.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V10-Synchronized-Netplay.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V10.1-Netplay-Quality.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V10.1-Netplay-Quality.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V10-Synchronized-Netplay
-          path: NESMultiplayer-V10-Synchronized-Netplay.apk
+          name: NESMultiplayer-V10.1-Netplay-Quality
+          path: NESMultiplayer-V10.1-Netplay-Quality.apk
           if-no-files-found: error
           retention-days: 7
