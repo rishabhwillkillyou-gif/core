@@ -1,4 +1,4 @@
-name: Build NES V10.1 Netplay Quality
+name: Build NES V10.2 Compatibility
 
 on:
   workflow_dispatch:
@@ -68,6 +68,12 @@ jobs:
           set -euxo pipefail
           python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay_v101.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v10"
 
+      - name: Apply V10.2 compatibility isolation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay_v102.py" /tmp/Lemuroid
+
       - name: Apply cross-device compatibility settings
         shell: bash
         run: |
@@ -119,13 +125,13 @@ jobs:
           set -euxo pipefail
           APK="$(find /tmp/Lemuroid/lemuroid-app/build/outputs/apk -type f -name "*.apk" | head -n 1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V10.1-Netplay-Quality.apk"
-          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V10.1-Netplay-Quality.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/NESMultiplayer-V10.2-Compatibility.apk"
+          ls -lh "$GITHUB_WORKSPACE/NESMultiplayer-V10.2-Compatibility.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NESMultiplayer-V10.1-Netplay-Quality
-          path: NESMultiplayer-V10.1-Netplay-Quality.apk
+          name: NESMultiplayer-V10.2-Compatibility
+          path: NESMultiplayer-V10.2-Compatibility.apk
           if-no-files-found: error
           retention-days: 7
