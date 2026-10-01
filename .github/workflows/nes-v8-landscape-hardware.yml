@@ -68,6 +68,26 @@ jobs:
           set -euxo pipefail
           python3 "$GITHUB_WORKSPACE/nes-v10/patch_netplay_v101.py" /tmp/Lemuroid "$GITHUB_WORKSPACE/nes-v10"
 
+      - name: Apply cross-device compatibility settings
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          shader = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt")
+          text = shader.read_text()
+          text = text.replace("SystemID.NES -> ShaderConfig.Sharp", "SystemID.NES -> ShaderConfig.Default")
+          shader.write_text(text)
+
+          retro = Path("/tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt")
+          text = retro.read_text()
+          text = text.replace("preferLowLatencyAudio = lowLatencyAudio", "preferLowLatencyAudio = false")
+          retro.write_text(text)
+          PY
+          grep -n "SystemID.NES" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt
+          grep -n "preferLowLatencyAudio" /tmp/Lemuroid/lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/viewmodel/GameViewModelRetroGameView.kt
+
       - name: Inject bundled FCEUmm NES core
         shell: bash
         run: |
