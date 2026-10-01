@@ -66,7 +66,7 @@ new_error = """        val resultIntent =
                             append(": ")
                             append(it)
                         }
-                        append("\n\n")
+                        append("\\n\\n")
                         append(exception.stackTraceToString().take(6000))
                     }
                 putExtra(PLAY_GAME_RESULT_ERROR, detail)
