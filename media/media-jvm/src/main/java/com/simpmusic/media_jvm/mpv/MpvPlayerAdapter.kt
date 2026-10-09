@@ -176,6 +176,12 @@ class MpvPlayerAdapter(
     @Volatile
     private var cachedIsLoading = false
 
+    @Volatile
+    private var lastKnownGoodVideoId: String? = null
+
+    @Volatile
+    private var lastKnownGoodPositionMs = 0L
+
     // Position update job (fallback polling for crossfade detection + stall watchdog)
     private var positionUpdateJob: Job? = null
 
@@ -185,14 +191,15 @@ class MpvPlayerAdapter(
     @Volatile
     private var lastStallRecoveryAtMs = 0L
 
-    // Precaching system
-    private data class PrecachedPlayer(
-        val player: MpvPlayer,
+    // Lightweight source prefetch: resolve the next URLs/metadata, but never open hidden mpv
+    // network streams in the background. Full-player precaching caused the current song to compete
+    // with two additional YouTube downloads on Windows.
+    private data class PrecachedSource(
         val mediaItem: GenericMediaItem,
         val source: PlayableSource,
     )
 
-    private val precachedPlayers = ConcurrentHashMap<String, PrecachedPlayer>()
+    private val precachedSources = ConcurrentHashMap<String, PrecachedSource>()
     private var precacheEnabled = true
     private val maxPrecacheCount = 2
     private var precacheJob: Job? = null
@@ -394,6 +401,8 @@ class MpvPlayerAdapter(
     override fun seekTo(positionMs: Long) {
         // Updated here rather than inside the coroutine so the UI reflects the seek immediately.
         cachedPosition = positionMs
+        lastKnownGoodVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId
+        lastKnownGoodPositionMs = positionMs
         // The mpv call hops to the player thread, same as the volume setters: reaching into a
         // handle from the caller's thread races the release that happens on the player thread, and
         // a handle destroyed between the isReleased check and the native call is a use-after-free.
@@ -612,9 +621,7 @@ class MpvPlayerAdapter(
             if (index !in playlist.indices) return@launch
             val track = playlist.removeAt(index)
 
-            precachedPlayers.remove(track.mediaId)?.let { cached ->
-                cleanupPlayerInternal(cached.player)
-            }
+            precachedSources.remove(track.mediaId)
 
             when {
                 index < localCurrentMediaItemIndex -> {
@@ -676,9 +683,7 @@ class MpvPlayerAdapter(
             val removed = playlist.subList(fromIndex, toIndex).toList()
             playlist.subList(fromIndex, toIndex).clear()
             removed.forEach { track ->
-                precachedPlayers.remove(track.mediaId)?.let { cached ->
-                    cleanupPlayerInternal(cached.player)
-                }
+                precachedSources.remove(track.mediaId)
             }
             localCurrentMediaItemIndex -= removed.size
 
@@ -753,9 +758,7 @@ class MpvPlayerAdapter(
         coroutineScope.launch {
             playlist[index] = mediaItem
 
-            precachedPlayers.remove(mediaItem.mediaId)?.let { cached ->
-                cleanupPlayerInternal(cached.player)
-            }
+            precachedSources.remove(mediaItem.mediaId)
 
             if (internalShuffleModeEnabled) {
                 createShuffleOrder()
@@ -1050,12 +1053,11 @@ class MpvPlayerAdapter(
      * silently undoes the others".
      *
      * [secondaryPlayer] — the track fading in during a crossfade — is the easy one to miss: it is
-     * removed from [precachedPlayers] before being promoted, so it belongs to neither collection.
+     * removed from [precachedSources] before being promoted, so it belongs to neither collection.
      */
     private fun forEachLiveHandle(action: (MpvPlayer) -> Unit) {
         currentPlayer?.let(action)
         secondaryPlayer?.let(action)
-        precachedPlayers.values.forEach { action(it.player) }
     }
 
     /**
@@ -1350,6 +1352,13 @@ class MpvPlayerAdapter(
         val mediaItem = playlist[index]
         val videoId = mediaItem.mediaId
 
+        if (lastKnownGoodVideoId != videoId) {
+            lastKnownGoodVideoId = videoId
+            lastKnownGoodPositionMs = startPositionMs
+        } else if (startPositionMs > lastKnownGoodPositionMs) {
+            lastKnownGoodPositionMs = startPositionMs
+        }
+
         currentLoadJob?.cancel()
 
         currentLoadJob =
@@ -1373,31 +1382,28 @@ class MpvPlayerAdapter(
                     cleanupEventListenerInternal()
                     stopPositionUpdates()
 
-                    // Extract URL on IO thread (network), mpv native calls stay on service thread
-                    val cachedPrecache = precachedPlayers.remove(videoId)
-                    var resolvedSource: PlayableSource? = null
-                    val player =
-                        if (cachedPrecache?.player != null) {
-                            cachedPrecache.player
-                        } else {
-                            var source = withContext(Dispatchers.IO) { extractPlayableUrl(mediaItem) }
-                            if (source == null || source.url.isEmpty()) {
-                                Logger.w(TAG, "First extract failed for $videoId, invalidating and retrying...")
-                                withContext(Dispatchers.IO) {
-                                    streamRepository.invalidateFormat(videoId)
-                                    streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$videoId")
-                                }
-                                source = withContext(Dispatchers.IO) { extractPlayableUrl(mediaItem) }
-                            }
-                            if (source == null || source.url.isEmpty()) {
-                                Logger.e(TAG, "Failed to extract playable URL for $videoId after retry")
-                                transitionToState(InternalState.ERROR)
-                                return@launch
-                            }
-                            resolvedSource = source
-                            createMediaPlayerInternal(source)
+                    // Use a prefetched URL when available, but create the actual mpv/network
+                    // connection only when this track becomes current.
+                    val cachedPrecache = precachedSources.remove(videoId)
+                    var source = cachedPrecache?.source
+                    if (source == null || source.url.isEmpty()) {
+                        source = withContext(Dispatchers.IO) { extractPlayableUrl(mediaItem) }
+                    }
+                    if (source == null || source.url.isEmpty()) {
+                        Logger.w(TAG, "First extract failed for $videoId, invalidating and retrying...")
+                        withContext(Dispatchers.IO) {
+                            streamRepository.invalidateFormat(videoId)
+                            streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$videoId")
                         }
+                        source = withContext(Dispatchers.IO) { extractPlayableUrl(mediaItem) }
+                    }
+                    if (source == null || source.url.isEmpty()) {
+                        Logger.e(TAG, "Failed to extract playable URL for $videoId after retry")
+                        transitionToState(InternalState.ERROR)
+                        return@launch
+                    }
 
+                    val player = createMediaPlayerInternal(source)
                     if (player == null) {
                         Logger.e(TAG, "Failed to create mpv player for $videoId")
                         transitionToState(InternalState.ERROR)
@@ -1411,24 +1417,7 @@ class MpvPlayerAdapter(
                     _currentVideoFrames.value = player.videoFrames
                     setupPlayerEventsInternal(player)
                     player.applyPlaybackLevels()
-
-                    if (cachedPrecache != null) {
-                        // The precached handle already has the file loaded and held paused;
-                        // unpausing is all that is needed (VLC needed an explicit play() here too).
-                        if (shouldPlay) {
-                            player.play()
-                        }
-                        Logger.d(TAG, "Playing from precache for $videoId")
-                    } else {
-                        val source = resolvedSource
-                        if (source != null) {
-                            player.loadFile(buildPlaybackUrl(source), startPaused = !shouldPlay)
-                        } else {
-                            Logger.e(TAG, "resolvedSource is null — should not happen")
-                            transitionToState(InternalState.ERROR)
-                            return@launch
-                        }
-                    }
+                    player.loadFile(buildPlaybackUrl(source), startPaused = !shouldPlay)
 
                     if (startPositionMs > 0) {
                         delay(100)
@@ -1565,7 +1554,7 @@ class MpvPlayerAdapter(
                                     streamRepository.invalidateFormat(currentVideoId)
                                     streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$currentVideoId")
                                     // Evict stale precache
-                                    precachedPlayers.remove(currentVideoId)?.player?.release()
+                                    precachedSources.remove(currentVideoId)
                                     // Reload the track
                                     loadAndPlayTrackInternal(localCurrentMediaItemIndex, cachedPosition, shouldPlay = true)
                                     return@launch
@@ -1616,6 +1605,15 @@ class MpvPlayerAdapter(
                     // Position updates come from the poll loop using secondaryPlayer's time.
                     if (!isCrossfading) {
                         cachedPosition = newTimeMs
+                        val currentId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId
+                        if (currentId != null) {
+                            if (lastKnownGoodVideoId != currentId) {
+                                lastKnownGoodVideoId = currentId
+                                lastKnownGoodPositionMs = newTimeMs
+                            } else if (newTimeMs > lastKnownGoodPositionMs) {
+                                lastKnownGoodPositionMs = newTimeMs
+                            }
+                        }
                     }
                 }
 
@@ -1832,21 +1830,19 @@ class MpvPlayerAdapter(
 
                     Logger.d(TAG, "Starting crossfade to track $nextIndex ($nextVideoId)")
 
-                    // Extract URL on IO thread (network), mpv native calls stay on service thread
-                    val cachedPrecache = precachedPlayers.remove(nextVideoId)
+                    // Reuse a prefetched URL, but do not keep a hidden player/stream alive before
+                    // the crossfade is actually about to start.
+                    val cachedPrecache = precachedSources.remove(nextVideoId)
+                    val nextSource =
+                        cachedPrecache?.source
+                            ?: withContext(Dispatchers.IO) { extractPlayableUrl(nextMediaItem) }
                     val nextPlayer: MpvPlayer? =
-                        if (cachedPrecache?.player != null) {
-                            Logger.d(TAG, "Using precached player for crossfade")
-                            cachedPrecache.player
+                        if (nextSource == null || nextSource.url.isEmpty()) {
+                            Logger.e(TAG, "Failed to extract URL for crossfade")
+                            null
                         } else {
-                            val nextSource = withContext(Dispatchers.IO) { extractPlayableUrl(nextMediaItem) }
-                            if (nextSource == null || nextSource.url.isEmpty()) {
-                                Logger.e(TAG, "Failed to extract URL for crossfade")
-                                null
-                            } else {
-                                createMediaPlayerInternal(nextSource)?.also { newPlayer ->
-                                    newPlayer.loadFile(buildPlaybackUrl(nextSource), startPaused = true)
-                                }
+                            createMediaPlayerInternal(nextSource)?.also { newPlayer ->
+                                newPlayer.loadFile(buildPlaybackUrl(nextSource), startPaused = true)
                             }
                         }
 
@@ -2679,7 +2675,13 @@ class MpvPlayerAdapter(
                             ) {
                                 val stalledVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId
                                 if (stalledVideoId != null) {
-                                    val resumePositionMs = observedPositionMs
+                                    val livePositionMs = currentPlayer?.time ?: 0L
+                                    val resumePositionMs =
+                                        maxOf(
+                                            observedPositionMs,
+                                            livePositionMs,
+                                            if (lastKnownGoodVideoId == stalledVideoId) lastKnownGoodPositionMs else 0L,
+                                        )
                                     stallRecoveryInFlight = true
                                     lastStallRecoveryAtMs = nowMs
                                     lastProgressAtMs = nowMs
@@ -2696,7 +2698,7 @@ class MpvPlayerAdapter(
                                                 streamRepository.invalidateFormat("${MERGING_DATA_TYPE.VIDEO}$stalledVideoId")
                                             }
 
-                                            precachedPlayers.remove(stalledVideoId)?.player?.release()
+                                            precachedSources.remove(stalledVideoId)
 
                                             if (
                                                 playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId == stalledVideoId &&
@@ -2738,7 +2740,7 @@ class MpvPlayerAdapter(
                                     if (dur > 0 && pos > 0) {
                                         val timeRemaining = dur - pos
                                         val nextVideoId = playlist.getOrNull(getNextMediaItemIndex())?.mediaId
-                                        val isPrecached = nextVideoId != null && precachedPlayers.containsKey(nextVideoId)
+                                        val isPrecached = nextVideoId != null && precachedSources.containsKey(nextVideoId)
                                         val preparationBufferMs = if (isPrecached) 0L else 3000L
                                         val resolvedDurationMs =
                                             if (crossfadeDurationMs == DataStoreManager.CROSSFADE_DURATION_AUTO) {
@@ -2779,7 +2781,7 @@ class MpvPlayerAdapter(
         if (!precacheEnabled || playlist.isEmpty()) return
 
         cancelPrecaching()
-        Logger.d(TAG, "Trigger precache")
+        Logger.d(TAG, "Trigger source prefetch")
         precacheJob =
             coroutineScope.launch {
                 try {
@@ -2799,7 +2801,7 @@ class MpvPlayerAdapter(
                             }
 
                         if (nextIndex != localCurrentMediaItemIndex &&
-                            !precachedPlayers.containsKey(playlist.getOrNull(nextIndex)?.mediaId)
+                            !precachedSources.containsKey(playlist.getOrNull(nextIndex)?.mediaId)
                         ) {
                             indicesToPrecache.add(nextIndex)
                         }
@@ -2809,35 +2811,19 @@ class MpvPlayerAdapter(
                         if (!isActive) break
 
                         val mediaItem = playlist.getOrNull(idx) ?: continue
-
-                        // Network extraction on IO, mpv native calls on the service thread
                         val source = withContext(Dispatchers.IO) { extractPlayableUrl(mediaItem) }
 
                         if (source != null && source.url.isNotEmpty()) {
-                            try {
-                                // mpv has no separate "parse without playing" call like vlcj's
-                                // media().prepare(); loading held at pause=yes is the equivalent,
-                                // and additionally warms the demuxer cache.
-                                val player = createMediaPlayerInternal(source)
-                                if (player == null) {
-                                    Logger.w(TAG, "Precaching skipped for $idx: could not create mpv player")
-                                } else {
-                                    player.applyPlaybackLevels()
-                                    player.loadFile(buildPlaybackUrl(source), startPaused = true)
-                                    precachedPlayers[mediaItem.mediaId] =
-                                        PrecachedPlayer(player, mediaItem, source)
-                                    Logger.d(TAG, "Precached player for index $idx")
-                                }
-                            } catch (e: Exception) {
-                                Logger.e(TAG, "Precaching error for $idx: ${e.message}")
-                            }
+                            precachedSources[mediaItem.mediaId] =
+                                PrecachedSource(mediaItem, source)
+                            Logger.d(TAG, "Prefetched source for index $idx")
                         }
 
                         delay(100)
                     }
                 } catch (e: Exception) {
                     if (e !is CancellationException) {
-                        Logger.e(TAG, "Precaching error: ${e.message}")
+                        Logger.e(TAG, "Source prefetch error: ${e.message}")
                     }
                 }
             }
@@ -2849,21 +2835,15 @@ class MpvPlayerAdapter(
     }
 
     private fun clearPrecacheExceptCurrentInternal() {
-        Logger.d(TAG, "Clearing precache")
-        precachedPlayers.entries.removeIf { (videoId, cached) ->
-            if (videoId != currentMediaItem?.mediaId) {
-                cleanupPlayerInternal(cached.player)
-                true
-            } else {
-                false
-            }
+        Logger.d(TAG, "Clearing prefetched sources")
+        precachedSources.entries.removeIf { (videoId, _) ->
+            videoId != currentMediaItem?.mediaId
         }
     }
 
     private fun clearAllPrecacheInternal() {
-        Logger.d(TAG, "Clearing all precache")
-        precachedPlayers.values.forEach { cleanupPlayerInternal(it.player) }
-        precachedPlayers.clear()
+        Logger.d(TAG, "Clearing all prefetched sources")
+        precachedSources.clear()
     }
 
     /**
