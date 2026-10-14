@@ -1664,20 +1664,34 @@ internal class MediaServiceHandlerImpl(
                 when (response) {
                     is Resource.Success -> {
                         val upstream = response.data?.first.orEmpty()
+                        val existingVideoIds =
+                            queueData.value.data.listTracks
+                                .asSequence()
+                                .map { it.videoId }
+                                .toHashSet()
+                        // Endless Radio must never append a track that is already anywhere in the
+                        // live queue. PersonalRadioRanker already collapses duplicates inside one
+                        // candidate batch; this second guard closes the gap between batches.
+                        val freshUpstream =
+                            upstream
+                                .asSequence()
+                                .filterNot { it.videoId in existingVideoIds }
+                                .distinctBy { it.videoId }
+                                .toList()
                         val seed =
                             queueData.value.data.listTracks
-                                ?.lastOrNull { it.videoId == videoId }
-                                ?: queueData.value.data.listTracks?.lastOrNull()
+                                .lastOrNull { it.videoId == videoId }
+                                ?: queueData.value.data.listTracks.lastOrNull()
 
                         val ranked =
-                            if (seed != null && upstream.isNotEmpty()) {
+                            if (seed != null && freshUpstream.isNotEmpty()) {
                                 val events =
                                     analyticsRepository
                                         .getPlaybackEventsByOffset(offset = 0, limit = 200)
                                         .lastOrNull()
                                         .orEmpty()
                                 val songIds =
-                                    (events.asSequence().map { it.videoId } + upstream.asSequence().map { it.videoId })
+                                    (events.asSequence().map { it.videoId } + freshUpstream.asSequence().map { it.videoId })
                                         .distinct()
                                         .toList()
                                 val songsById =
@@ -1687,9 +1701,9 @@ internal class MediaServiceHandlerImpl(
                                         .orEmpty()
                                         .associateBy { it.videoId }
                                 val taste = ListeningTasteBuilder.build(events, songsById)
-                                val size = upstream.size.coerceAtLeast(1)
+                                val size = freshUpstream.size.coerceAtLeast(1)
                                 val candidates =
-                                    upstream.mapIndexed { index, track ->
+                                    freshUpstream.mapIndexed { index, track ->
                                         PersonalRadioRanker.Candidate(
                                             track = track,
                                             providerSimilarity = (1.0 - index.toDouble() / size.toDouble()).coerceAtLeast(0.35),
@@ -1700,7 +1714,7 @@ internal class MediaServiceHandlerImpl(
                                     .rank(seed = seed, candidates = candidates, taste = taste, limit = 15)
                                     .map { it.track }
                             } else {
-                                upstream.take(15)
+                                freshUpstream.take(15)
                             }
 
                         loadMoreCatalog(ranked.toCollection(arrayListOf()))
