@@ -359,7 +359,7 @@ internal class CrossfadeExoPlayerAdapter(
     // Track retry attempts per media item to avoid infinite retry loops
     private var retryCount = 0
     private var retryVideoId: String? = null
-    private val maxRetryCount = 2
+    private val maxRetryCount = 3
 
     // ========== AutoMix Metadata Cache ==========
     // videoId -> audio analysis data from Tidal (populated externally when 320kbps stream is fetched)
@@ -1754,10 +1754,14 @@ internal class CrossfadeExoPlayerAdapter(
                     //   lists FileNotFoundException as non-retriable, so this layer is the only chance
                     //   to recover; reloading re-runs the resolver, which now sees an incomplete cache
                     //   and resolves a real URL.
-                    val isRetryableSourceError =
+                    val isStaleSourceError =
                         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
                             error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                             error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+                    val isTransientNetworkError =
+                        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                    val isRetryableSourceError = isStaleSourceError || isTransientNetworkError
 
                     val currentVideoId = playlist.getOrNull(localCurrentMediaItemIndex)?.mediaId
                     if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) {
@@ -1783,12 +1787,20 @@ internal class CrossfadeExoPlayerAdapter(
                             val resumePositionMs = cachedPosition.coerceAtLeast(0L)
                             coroutineScope.launch {
                                 try {
-                                    // Invalidate cached format so ResolvingDataSource fetches a fresh URL
-                                    streamRepository.invalidateFormat(currentVideoId)
-                                    streamRepository.invalidateFormat("${com.maxrave.common.MERGING_DATA_TYPE.VIDEO}$currentVideoId")
-                                    // Evict from precache (it may hold a stale player)
-                                    precachedPlayers.remove(currentVideoId)?.player?.release()
-                                    // Reload the track at the saved position
+                                    if (isStaleSourceError) {
+                                        // 403/410/malformed responses mean the resolved URL itself
+                                        // is stale, so force a fresh extraction.
+                                        streamRepository.invalidateFormat(currentVideoId)
+                                        streamRepository.invalidateFormat("${com.maxrave.common.MERGING_DATA_TYPE.VIDEO}$currentVideoId")
+                                        precachedPlayers.remove(currentVideoId)?.player?.release()
+                                    } else {
+                                        // A brief mobile-network drop does NOT make a still-valid
+                                        // YouTube URL stale. Keep it and retry after a small
+                                        // progressive backoff instead of adding another extraction
+                                        // request to an already weak connection.
+                                        delay(750L * retryCount)
+                                    }
+                                    // Reload the track at the saved position.
                                     loadAndPlayTrackInternal(localCurrentMediaItemIndex, resumePositionMs, shouldPlay = true)
                                 } catch (e: Exception) {
                                     if (e is CancellationException) throw e
