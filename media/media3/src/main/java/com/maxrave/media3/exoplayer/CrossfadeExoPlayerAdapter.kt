@@ -574,8 +574,11 @@ internal class CrossfadeExoPlayerAdapter(
                         .setBufferDurationsMs(
                             DefaultLoadControl.DEFAULT_MIN_BUFFER_MS * 4,
                             DefaultLoadControl.DEFAULT_MAX_BUFFER_MS * 4,
-                            0,
-                            0,
+                            // Keep the first start snappy; URL resolution is the expensive part.
+                            250,
+                            // After an actual network stall, rebuild a small safety cushion
+                            // before resuming instead of oscillating play/pause on a weak link.
+                            5000,
                         ).build(),
                 ).setWakeMode(C.WAKE_MODE_NETWORK)
                 .setHandleAudioBecomingNoisy(true)
