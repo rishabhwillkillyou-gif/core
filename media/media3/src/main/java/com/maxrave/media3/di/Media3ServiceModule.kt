@@ -301,15 +301,16 @@ private fun provideResolvingDataSourceFactory(
                 streamRepository.getNewFormat(id).lastOrNull()?.let {
                     val videoUrl = it.videoUrl
                     if (videoUrl != null && it.expiredTime > now()) {
+                        // Trust an unexpired cached URL immediately. The old path made a separate
+                        // network probe (is403Url) before every first byte; on a weak connection
+                        // that round-trip could cost tens of seconds. If the URL is actually stale,
+                        // CrossfadeExoPlayerAdapter already handles HTTP 403/410 by invalidating the
+                        // format and retrying the same track from its current position.
                         Logger.d("Stream", videoUrl)
-                        Logger.w("Stream", "Video from format")
-                        val is403Url = streamRepository.is403Url(videoUrl).firstOrNull() != false
-                        Logger.d("Stream", "is 403 $is403Url")
-                        if (!is403Url) {
-                            dataSpecReturn = dataSpec.withUri(videoUrl.toUri()).subrange(dataSpec.uriPositionOffset, chunkLength)
-                            resolved = true
-                            return@runBlocking
-                        }
+                        Logger.w("Stream", "Video from cached format")
+                        dataSpecReturn = dataSpec.withUri(videoUrl.toUri()).subrange(dataSpec.uriPositionOffset, chunkLength)
+                        resolved = true
+                        return@runBlocking
                     }
                 }
                 streamRepository
@@ -329,15 +330,14 @@ private fun provideResolvingDataSourceFactory(
                 streamRepository.getNewFormat(mediaId).lastOrNull()?.let {
                     val audioUrl = it.audioUrl
                     if (audioUrl != null && it.expiredTime > now()) {
+                        // Same fast path as video: avoid a second HTTP request solely to prove the
+                        // cached URL works. A genuine stale/403 URL is recovered by the player's
+                        // existing retry path, so optimistic use is both faster and safe.
                         Logger.d("Stream", audioUrl)
-                        Logger.w("Stream", "Audio from format")
-                        val is403Url = streamRepository.is403Url(audioUrl).firstOrNull() != false
-                        Logger.d("Stream", "is 403 $is403Url")
-                        if (!is403Url) {
-                            dataSpecReturn = dataSpec.withUri(audioUrl.toUri()).subrange(dataSpec.uriPositionOffset, chunkLength)
-                            resolved = true
-                            return@runBlocking
-                        }
+                        Logger.w("Stream", "Audio from cached format")
+                        dataSpecReturn = dataSpec.withUri(audioUrl.toUri()).subrange(dataSpec.uriPositionOffset, chunkLength)
+                        resolved = true
+                        return@runBlocking
                     }
                 }
                 streamRepository
