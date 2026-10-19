@@ -9,6 +9,7 @@ if($LASTEXITCODE -ne 0){throw 'Could not download upstream source'}
 function Edit([string]$rel,[string]$old,[string]$new){
   $file=Join-Path $src $rel
   $content=[IO.File]::ReadAllText($file).Replace(([char]13).ToString(),'')
+  $old=$old.Replace(([char]13).ToString(),'')
   $n=([regex]::Matches($content,[regex]::Escape($old))).Count
   if($n -ne 1){throw "Patch failure: $rel, $n matches for $old"}
   [IO.File]::WriteAllText($file,$content.Replace($old,$new),$utf8)
