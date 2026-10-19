@@ -7,6 +7,12 @@ on:
     paths:
       - 'rishidm/**'
       - '.github/workflows/rishidm-windows.yml'
+  pull_request:
+    branches:
+      - multiplatform
+    paths:
+      - 'rishidm/**'
+      - '.github/workflows/rishidm-windows.yml'
   workflow_dispatch:
 
 permissions:
