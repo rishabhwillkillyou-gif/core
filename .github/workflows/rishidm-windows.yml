@@ -1,0 +1,45 @@
+name: Build RishiDM Windows EXE
+
+on:
+  push:
+    branches:
+      - rishidm-build
+    paths:
+      - 'rishidm/**'
+      - '.github/workflows/rishidm-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated build branch
+        uses: actions/checkout@v4
+      - name: Set up JetBrains Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: jetbrains
+          java-version: '25'
+      - name: Ensure NSIS installer compiler
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
+            choco install nsis -y --no-progress
+          }
+          if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
+            throw 'NSIS is not installed in the expected location'
+          }
+      - name: Compile RishiDM installer
+        shell: pwsh
+        run: ./rishidm/build-rishidm.ps1
+      - name: Upload executable installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: RishiDM-v0.1.0-Windows-installer
+          path: rishidm/rishidm-output/RishiDM_Setup_0.1.0_x64.exe
+          if-no-files-found: error
+          retention-days: 30
