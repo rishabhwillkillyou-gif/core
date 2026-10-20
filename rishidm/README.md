@@ -8,3 +8,5 @@ This work lives on the **rishidm-build** branch for isolated experimentation.
 The draft pull request is solely for build testing and **must not be merged** into the NES/core source.
 
 The first release is a development build, not the complete IDM feature set.
+
+GitHub Actions was enabled on 2026-10-20. This branch is for the RishiDM Windows installer only.
