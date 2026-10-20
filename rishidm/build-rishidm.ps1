@@ -81,8 +81,8 @@ class RishiDMNoUpdateChecker(currentVersion: Version) : UpdateChecker(currentVer
 }
 '@,$utf8)
 $reg='desktop/app/src/main/kotlin/com/abdownloadmanager/desktop/nativemessaging/NativeMessagingManifestApplier.kt'
-$old='    private val chromeRegistryPath get() = "HKCU\SOFTWARE\Google\Chrome\NativeMessagingHosts\${AppInfo.packageName}"'
-$new='    private val edgeRegistryPath get() = "HKCU\SOFTWARE\Microsoft\Edge\NativeMessagingHosts\${AppInfo.packageName}"'
+$old='    private val chromeRegistryPath get() = "HKCU\\SOFTWARE\\Google\\Chrome\\NativeMessagingHosts\\${AppInfo.packageName}"'
+$new='    private val edgeRegistryPath get() = "HKCU\\SOFTWARE\\Microsoft\\Edge\\NativeMessagingHosts\\${AppInfo.packageName}"'
 Edit $reg $old ($old + [char]10 + $new)
 $old=@'
         WindowsRegistry.setValueInRegistry(
