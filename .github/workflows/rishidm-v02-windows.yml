@@ -1,8 +1,8 @@
-name: RishiDM v0.3 Video Downloader Preview
+name: RishiDM v0.4 4K Video Downloader Preview
 
 on:
   push:
-    branches: [rishidm-v03-media]
+    branches: [rishidm-v04-video-fixes]
     paths:
       - 'rishidm/**'
       - '.github/workflows/rishidm-v02-windows.yml'
@@ -36,13 +36,13 @@ jobs:
           if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
             throw 'NSIS is required to generate the Windows installer'
           }
-      - name: Compile and package RishiDM v0.3
+      - name: Compile and package RishiDM v0.4
         shell: pwsh
         run: ./rishidm/build-rishidm-v02.ps1
       - name: Upload RishiDM EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RishiDM-v0.3-Video-Preview
-          path: rishidm/rishidm-output/RishiDM_Setup_0.3.0_x64.exe
+          name: RishiDM-v0.4-4K-Video-Preview
+          path: rishidm/rishidm-output/RishiDM_Setup_0.4.0_x64.exe
           retention-days: 30
           if-no-files-found: error
