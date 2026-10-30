@@ -1,0 +1,42 @@
+name: RishiDM v0.4 Media Scripts Syntax Check
+
+on:
+  push:
+    branches: [rishidm-v04-video-fixes]
+    paths: ['.github/workflows/rishidm-v04-media-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-powershell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all RishiDM media scripts without execution
+        shell: pwsh
+        run: |
+          $files = @(
+            'rishidm/video-downloader.ps1',
+            'rishidm/browser-setup.ps1',
+            'rishidm/build-rishidm-v02.ps1',
+            'rishidm/v03-media-source.ps1',
+            'rishidm/v04-browser-source.ps1',
+            'rishidm/v03-media-installer.ps1',
+            'rishidm/v04-media-installer.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file).Path,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$file : $($_.Message)" }
+              throw "PowerShell parse failed for $file"
+            }
+            Write-Host "VALID: $file"
+          }
