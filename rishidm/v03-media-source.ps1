@@ -65,7 +65,7 @@ $videoMenu=@'
     })
 '@
 if(!$menu.Contains($marker)){throw 'Context menu creation marker missing'}
-$menu=$menu.Replace($marker,$videoMenu+$marker)
+$menu=$menu.Replace($marker,$videoMenu+[char]10+$marker)
 $marker='        switch (args.menuItemId) {'
 $videoAction=@'
             case optionIds.downloadVideoWithRishiDM: {
@@ -91,7 +91,7 @@ $videoAction=@'
             }
 '@
 if(!$menu.Contains($marker)){throw 'Context menu switch marker missing'}
-$menu=$menu.Replace($marker,$marker+[char]10+$videoAction)
+$menu=$menu.Replace($marker,$marker+[char]10+$videoAction+[char]10)
 [IO.File]::WriteAllText($menuFile,$menu,$utf8)
 
 Write-Host "RishiDM v0.3 native video handler + browser context menu patched."
