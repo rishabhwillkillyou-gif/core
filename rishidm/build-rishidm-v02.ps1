@@ -199,6 +199,8 @@ Function .onInstSuccess
     ${Endif}
 FunctionEnd
 '@
+$successBlock=$successBlock.Replace(([char]13).ToString(),'')
+$successReplacement=$successReplacement.Replace(([char]13).ToString(),'')
 if (-not $nsisText.Contains($successBlock)) { throw "Cannot find NSIS completion block" }
 $nsisText=$nsisText.Replace($successBlock,$successReplacement)
 $nsisText=$nsisText.Replace('Connect Browser.lnk','Connect RishiDM to Chrome or Edge.lnk')
