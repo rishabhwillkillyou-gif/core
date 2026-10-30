@@ -1,0 +1,73 @@
+name: Publish RishiDM v0.4 4K video preview
+
+on:
+  push:
+    branches: [rishidm-v04-video-fixes]
+    paths:
+      - '.github/workflows/rishidm-v04-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  github-preview-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Retrieve successfully built Windows EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.4-4K-Video-Preview
+          run-id: 41115662934
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify executable and compute checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.4.0_x64.exe
+          test -f "$exe"
+          test "$(stat -c '%s' "$exe")" -gt 180000000
+          test "$(head -c 2 "$exe")" = "MZ"
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+      - name: Publish RishiDM preview release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='rishidm-v0.4.0-preview'
+          exe=installer/RishiDM_Setup_0.4.0_x64.exe
+          hash="$(sha256sum "$exe" | awk '{print $1}')"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite."
+            exit 1
+          fi
+          cat > installer/RELEASE_NOTES.txt <<EOF
+          RishiDM v0.4 — Experimental 4K Windows Preview
+
+          CHANGES
+          - YouTube floating download control and browser-toolbar video action.
+          - Up to 4K and 8K quality limits, where supported by source.
+          - 'Check available qualities' metadata inspection.
+          - Bundled yt-dlp 2026.10.26, Deno 2.9.8 and LGPL/shared FFmpeg 9.0.2.
+          - Video URL/error reporting improvements; normal AB-based downloads unchanged.
+          - Explicit browser-extension consent still required.
+
+          SAFETY / LIMITATIONS
+          - UNSIGNED experimental installer. Not independently runtime-tested.
+          - Only download material that you have the rights to save.
+          - DRM is not bypassed. Some websites cannot be downloaded by yt-dlp.
+          - Video helper runs separately from the main RishiDM download list.
+          - Keep the previous installer available for rollback.
+          - MIT/LGPL/yt-dlp notices and sources are included in the package.
+
+          SHA-256: $hash
+          Windows build: https://github.com/$GITHUB_REPOSITORY/actions/runs/41115662934
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target rishidm-v04-video-fixes \
+            --title 'RishiDM v0.4.0 — 4K Video Preview' --prerelease \
+            --notes-file installer/RELEASE_NOTES.txt
