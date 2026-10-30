@@ -17,32 +17,32 @@ if(-not (Test-Path -LiteralPath $ffmpeg)){
  $ffmpegCmd=Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
  if($ffmpegCmd){$ffmpeg=$ffmpegCmd.Source}else{$ffmpeg=$null}
 }
-$font=New-Object Drawing.Font('Segoe UI',10)
-$form=New-Object Windows.Forms.Form
+$font=New-Object System.Drawing.Font('Segoe UI',10)
+$form=New-Object System.Windows.Forms.Form
 $form.Text='RishiDM - Video Downloader'
 $form.StartPosition='CenterScreen'
 $form.FormBorderStyle='FixedDialog'
 $form.MaximizeBox=$false
 $form.Width=710;$form.Height=540;$form.Font=$font
-$head=New-Object Windows.Forms.Label
-$head.Text='Download video with RishiDM';$head.Font=New-Object Drawing.Font('Segoe UI',16,[Drawing.FontStyle]::Bold)
-$head.Location=New-Object Drawing.Point(22,18);$head.Size=New-Object Drawing.Size(650,40);$form.Controls.Add($head)
-$sub=New-Object Windows.Forms.Label
+$head=New-Object System.Windows.Forms.Label
+$head.Text='Download video with RishiDM';$head.Font=New-Object System.Drawing.Font('Segoe UI',16,[System.Drawing.FontStyle]::Bold)
+$head.Location=New-Object System.Drawing.Point(22,18);$head.Size=New-Object System.Drawing.Size(650,40);$form.Controls.Add($head)
+$sub=New-Object System.Windows.Forms.Label
 $sub.Text='Supports public or otherwise authorized, unprotected videos on yt-dlp-supported sites.'
-$sub.Location=New-Object Drawing.Point(24,60);$sub.Size=New-Object Drawing.Size(650,25);$form.Controls.Add($sub)
+$sub.Location=New-Object System.Drawing.Point(24,60);$sub.Size=New-Object System.Drawing.Size(650,25);$form.Controls.Add($sub)
 
 function AddLabel($title,$x,$y,$w){
- $l=New-Object Windows.Forms.Label;$l.Text=$title
- $l.Location=New-Object Drawing.Point($x,$y);$l.Size=New-Object Drawing.Size($w,23)
+ $l=New-Object System.Windows.Forms.Label;$l.Text=$title
+ $l.Location=New-Object System.Drawing.Point($x,$y);$l.Size=New-Object System.Drawing.Size($w,23)
  $form.Controls.Add($l)
 }
 AddLabel 'Video or page URL' 24 94 210
-$urlInput=New-Object Windows.Forms.TextBox
-$urlInput.Location=New-Object Drawing.Point(24,119);$urlInput.Size=New-Object Drawing.Size(646,28)
+$urlInput=New-Object System.Windows.Forms.TextBox
+$urlInput.Location=New-Object System.Drawing.Point(24,119);$urlInput.Size=New-Object System.Drawing.Size(646,28)
 $urlInput.Text=$Url;$form.Controls.Add($urlInput)
 AddLabel 'Quality' 24 161 220
-$quality=New-Object Windows.Forms.ComboBox
-$quality.Location=New-Object Drawing.Point(24,184);$quality.Size=New-Object Drawing.Size(390,30)
+$quality=New-Object System.Windows.Forms.ComboBox
+$quality.Location=New-Object System.Drawing.Point(24,184);$quality.Size=New-Object System.Drawing.Size(390,30)
 $quality.DropDownStyle='DropDownList'
 [void]$quality.Items.AddRange([object[]]@(
  'Best single-file video (works without FFmpeg)',
@@ -54,41 +54,41 @@ $quality.DropDownStyle='DropDownList'
 $quality.SelectedIndex=0;$form.Controls.Add($quality)
 
 AddLabel 'Save folder' 24 226 220
-$dest=New-Object Windows.Forms.TextBox
-$dest.Location=New-Object Drawing.Point(24,252);$dest.Size=New-Object Drawing.Size(520,28)
+$dest=New-Object System.Windows.Forms.TextBox
+$dest.Location=New-Object System.Drawing.Point(24,252);$dest.Size=New-Object System.Drawing.Size(520,28)
 $dest.Text=Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
 $form.Controls.Add($dest)
-$browse=New-Object Windows.Forms.Button
-$browse.Text='Browse';$browse.Location=New-Object Drawing.Point(555,250);$browse.Size=New-Object Drawing.Size(115,33)
+$browse=New-Object System.Windows.Forms.Button
+$browse.Text='Browse';$browse.Location=New-Object System.Drawing.Point(555,250);$browse.Size=New-Object System.Drawing.Size(115,33)
 $browse.Add_Click({
- $d=New-Object Windows.Forms.FolderBrowserDialog
+ $d=New-Object System.Windows.Forms.FolderBrowserDialog
  $d.Description='Choose a folder for completed video files'
  $d.SelectedPath=$dest.Text
- if($d.ShowDialog() -eq [Windows.Forms.DialogResult]::OK){$dest.Text=$d.SelectedPath}
+ if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){$dest.Text=$d.SelectedPath}
  $d.Dispose()
 });$form.Controls.Add($browse)
-$start=New-Object Windows.Forms.Button
-$start.Text='Start download';$start.Location=New-Object Drawing.Point(24,301);$start.Size=New-Object Drawing.Size(158,38)
-$cancel=New-Object Windows.Forms.Button
+$start=New-Object System.Windows.Forms.Button
+$start.Text='Start download';$start.Location=New-Object System.Drawing.Point(24,301);$start.Size=New-Object System.Drawing.Size(158,38)
+$cancel=New-Object System.Windows.Forms.Button
 $cancel.Text='Cancel';$cancel.Enabled=$false
-$cancel.Location=New-Object Drawing.Point(194,301);$cancel.Size=New-Object Drawing.Size(110,38)
+$cancel.Location=New-Object System.Drawing.Point(194,301);$cancel.Size=New-Object System.Drawing.Size(110,38)
 $form.Controls.Add($start);$form.Controls.Add($cancel)
-$status=New-Object Windows.Forms.Label
+$status=New-Object System.Windows.Forms.Label
 $status.Text='Ready. Normal file downloads still use the main RishiDM window.'
-$status.Location=New-Object Drawing.Point(320,309);$status.Size=New-Object Drawing.Size(355,30)
+$status.Location=New-Object System.Drawing.Point(320,309);$status.Size=New-Object System.Drawing.Size(355,30)
 $form.Controls.Add($status)
-$log=New-Object Windows.Forms.TextBox
+$log=New-Object System.Windows.Forms.TextBox
 $log.ReadOnly=$true;$log.Multiline=$true;$log.ScrollBars='Vertical'
-$log.Location=New-Object Drawing.Point(24,355);$log.Size=New-Object Drawing.Size(646,114)
-$log.Font=New-Object Drawing.Font('Consolas',9)
+$log.Location=New-Object System.Drawing.Point(24,355);$log.Size=New-Object System.Drawing.Size(646,114)
+$log.Font=New-Object System.Drawing.Font('Consolas',9)
 $form.Controls.Add($log)
-$notice=New-Object Windows.Forms.Label
+$notice=New-Object System.Windows.Forms.Label
 $notice.Text='Pause/restart recovery is supported where the media source permits it. No DRM bypass.'
-$notice.Location=New-Object Drawing.Point(24,480);$notice.Size=New-Object Drawing.Size(655,24)
-$notice.Font=New-Object Drawing.Font('Segoe UI',8)
+$notice.Location=New-Object System.Drawing.Point(24,480);$notice.Size=New-Object System.Drawing.Size(655,24)
+$notice.Font=New-Object System.Drawing.Font('Segoe UI',8)
 $form.Controls.Add($notice)
 $script:proc=$null;$script:logFile=$null;$script:errorFile=$null;$script:running=$false;$script:userCancelled=$false
-$timer=New-Object Windows.Forms.Timer
+$timer=New-Object System.Windows.Forms.Timer
 $timer.Interval=800
 function RefreshLog {
  if(!$script:logFile){return}
@@ -131,24 +131,24 @@ function TestUrl([string]$raw){
 $start.Add_Click({
  $url=TestUrl $urlInput.Text.Trim()
  if(-not $url){
-  [Windows.Forms.MessageBox]::Show('Enter a valid http:// or https:// video page URL.','RishiDM') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show('Enter a valid http:// or https:// video page URL.','RishiDM') | Out-Null
   return
  }
  $target=$dest.Text.Trim()
  if(-not (Test-Path -LiteralPath $target -PathType Container)){
-  [Windows.Forms.MessageBox]::Show('Choose an existing download folder.','RishiDM') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show('Choose an existing download folder.','RishiDM') | Out-Null
   return
  }
  $idx=$quality.SelectedIndex
  if($idx -ge 2 -and !$ffmpeg){
-  [Windows.Forms.MessageBox]::Show('This choice needs FFmpeg. Install FFmpeg separately or choose a single-file video format. RishiDM does not silently install external codecs.','RishiDM') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show('This choice needs FFmpeg. Install FFmpeg separately or choose a single-file video format. RishiDM does not silently install external codecs.','RishiDM') | Out-Null
   return
  }
  $fmt=switch($idx){
   0 {'b[ext=mp4]/b'}
   1 {'b[height<=720]/b'}
-  2 {'bv*[height<=1080]+ba/b[height<=1080]'}
-  3 {'bv*+ba/b'}
+  2 {'bv[height<=1080]+ba/b[height<=1080]'}
+  3 {'bv+ba/b'}
   4 {'ba/b'}
  }
  $argsList=@(
@@ -162,7 +162,7 @@ $start.Add_Click({
  if($idx -in @(2,3)){$argsList+=@('--merge-output-format','mp4')}
  if($idx -eq 4){$argsList+=@('--extract-audio','--audio-format','mp3')}
  if($ffmpeg){$argsList+=@('--ffmpeg-location',$ffmpeg)}
- $argsList+=@($url)
+ $argsList+=@('--',$url)
  # Validate command-line arguments, quote them and avoid shell execution.
  $quoted=$argsList | ForEach-Object {
   if($_ -match '[\x00-\x1f"]'){throw 'Invalid argument'}
@@ -173,14 +173,6 @@ $start.Add_Click({
  $id=[guid]::NewGuid().ToString('N')
  $script:logFile=Join-Path $logDir "$id.out.log"
  $script:errorFile=Join-Path $logDir "$id.err.log"
- $psi=New-Object Diagnostics.ProcessStartInfo
- $psi.FileName=$binary
- $psi.Arguments=$quoted -join ' '
- $psi.CreateNoWindow=$true
- $psi.UseShellExecute=$false
- $psi.RedirectStandardOutput=$true
- $psi.RedirectStandardError=$true
- $psi.WorkingDirectory=$target
  try{
   # Start-Process handles continuous output redirection; the timer reads the logs.
   $script:proc=Start-Process -FilePath $binary -ArgumentList ($quoted -join ' ') -PassThru -WindowStyle Hidden -RedirectStandardOutput $script:logFile -RedirectStandardError $script:errorFile
@@ -190,7 +182,7 @@ $start.Add_Click({
   $status.Text='Downloading…'
   $timer.Start()
  }catch{
-  [Windows.Forms.MessageBox]::Show("Could not start yt-dlp: $($_.Exception.Message)",'RishiDM') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show("Could not start yt-dlp: $($_.Exception.Message)",'RishiDM') | Out-Null
  }
 })
 $cancel.Add_Click({
@@ -203,9 +195,10 @@ $cancel.Add_Click({
  FinishDownload
 })
 $form.Add_FormClosing({
+ param($sender, $eventArgs)
  if($script:running){
-  $answer=[Windows.Forms.MessageBox]::Show('A video download is running. Cancel it and close?','RishiDM','YesNo','Question')
-  if($answer -ne [Windows.Forms.DialogResult]::Yes){$_.Cancel=$true;return}
+  $answer=[System.Windows.Forms.MessageBox]::Show('A video download is running. Cancel it and close?','RishiDM','YesNo','Question')
+  if($answer -ne [System.Windows.Forms.DialogResult]::Yes){$eventArgs.Cancel=$true;return}
   $script:userCancelled=$true
   try{& taskkill.exe /F /T /PID $script:proc.Id *> $null}catch{}
  }
