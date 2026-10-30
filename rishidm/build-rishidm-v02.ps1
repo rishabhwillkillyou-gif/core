@@ -15,7 +15,7 @@ function Edit([string]$rel,[string]$old,[string]$new){
   [IO.File]::WriteAllText($file,$content.Replace($old,$new),$utf8)
 }
 Edit 'settings.gradle.kts' 'rootProject.name = "ABDownloadManager"' 'rootProject.name = "RishiDM"'
-Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.2.0".toVersion()'
+Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.2.1".toVersion()'
 $v='buildSrc/src/main/kotlin/buildlogic/versioning/VersionUtil.kt'
 Edit $v 'return "AB Download Manager"' 'return "RishiDM"'
 Edit $v 'return ".abdm"' 'return ".rishidm"'
@@ -135,7 +135,7 @@ $pkgPath=Join-Path $extensionRoot 'package.json'
 $pkg=Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
 $pkg.displayName='RishiDM Browser Integration'
 $pkg.description='Capture downloads with the RishiDM Windows application'
-$pkg.version='0.2.0'
+$pkg.version='0.2.1'
 [IO.File]::WriteAllText($pkgPath,($pkg | ConvertTo-Json -Depth 20),$utf8)
 foreach($loc in Get-ChildItem (Join-Path $extensionRoot 'public/_locales') -Filter 'messages.json' -Recurse -File){
  $c=[IO.File]::ReadAllText($loc.FullName)
@@ -177,6 +177,31 @@ $cleanMarker='    RmDir /r "' + [char]36 + '{INSTALL_DIR}\runtime"'
 if(!$nsisText.Contains($cleanMarker)){throw 'Installer uninstall cleanup marker missing'}
 $remove= '    RmDir /r "' + [char]36 + '{INSTALL_DIR}\BrowserExtension"' + [char]10 + '    Delete "' + [char]36 + '{INSTALL_DIR}\browser-setup.ps1"' + [char]10 + '    Delete "' + [char]36 + '{INSTALL_DIR}\BrowserSetup.cmd"'
 $nsisText=$nsisText.Replace($cleanMarker,$cleanMarker+[char]10+$remove)
+# Open browser guide once when the interactive installer finishes, never force-install an extension.
+$successBlock=@'
+Function .onInstSuccess
+    ; Check if the installer is running in silent mode
+    ${If} ${Silent}
+        ; In silent mode, always run the app
+        Call RunMainBinary
+    ${Endif}
+FunctionEnd
+'@
+$successReplacement=@'
+Function .onInstSuccess
+    ; Silent installations must never open an interactive setup dialog.
+    ${If} ${Silent}
+        Call RunMainBinary
+    ${Else}
+        ; Install the desktop side automatically; let the user approve the browser extension.
+        IfFileExists "$INSTDIR\BrowserSetup.cmd" 0 +2
+        ExecShell "open" "$INSTDIR\BrowserSetup.cmd"
+    ${Endif}
+FunctionEnd
+'@
+if (-not $nsisText.Contains($successBlock)) { throw "Cannot find NSIS completion block" }
+$nsisText=$nsisText.Replace($successBlock,$successReplacement)
+$nsisText=$nsisText.Replace('Connect Browser.lnk','Connect RishiDM to Chrome or Edge.lnk')
 [IO.File]::WriteAllText($nsis,$nsisText,$utf8)
 Write-Host 'Built Chrome/Firefox extension and embedded it in RishiDM installer.'
 # ---- End v0.2 additions ----
@@ -191,7 +216,7 @@ try {
 $bin=Join-Path $src 'build/ci-release/binaries'
 $exe=Get-ChildItem $bin -Filter 'RishiDM_*_windows_x64.exe' | Select-Object -First 1
 if(-not $exe){throw "No Windows x64 EXE produced"}
-$target=Join-Path $out 'RishiDM_Setup_0.2.0_x64.exe'
+$target=Join-Path $out 'RishiDM_Setup_0.2.1_x64.exe'
 Copy-Item $exe.FullName $target -Force
 $stream=[IO.File]::OpenRead($target)
 try{
