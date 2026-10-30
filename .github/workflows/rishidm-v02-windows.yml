@@ -1,8 +1,8 @@
-name: RishiDM v0.2 Windows installer and browser package
+name: RishiDM v0.2.1 Browser Setup Fix
 
 on:
   push:
-    branches: [rishidm-v02-dev]
+    branches: [rishidm-v021-browser-fix]
     paths:
       - 'rishidm/**'
       - '.github/workflows/rishidm-v02-windows.yml'
@@ -42,7 +42,7 @@ jobs:
       - name: Upload RishiDM EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RishiDM-v0.2-Windows-Preview
-          path: rishidm/rishidm-output/RishiDM_Setup_0.2.0_x64.exe
+          name: RishiDM-v0.2.1-Browser-Setup-Fix
+          path: rishidm/rishidm-output/RishiDM_Setup_0.2.1_x64.exe
           retention-days: 30
           if-no-files-found: error
