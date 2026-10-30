@@ -1,0 +1,49 @@
+name: Publish RishiDM v0.3 preview installer
+
+on:
+  push:
+    branches: [rishidm-v03-media]
+    paths:
+      - '.github/workflows/rishidm-publish-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch verified Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.3-Video-Preview
+          run-id: 41110776783
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify EXE and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f installer/RishiDM_Setup_0.3.0_x64.exe
+          echo "b97d1cb33d6333f1dbde27bfd38030c07248bc206708afa9a0de44643d4522b2  installer/RishiDM_Setup_0.3.0_x64.exe" | sha256sum --check -
+          test "$(stat -c '%s' installer/RishiDM_Setup_0.3.0_x64.exe)" -gt 90000000
+      - name: Publish clearly labeled preview release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="rishidm-v0.3.0-preview"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Preview release already exists; refusing to overwrite."
+            exit 0
+          fi
+          gh release create "$tag" installer/RishiDM_Setup_0.3.0_x64.exe \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v03-media \
+            --title "RishiDM v0.3.0 — Experimental Windows Preview" \
+            --prerelease \
+            --notes "Experimental Windows x64 installer based on AB Download Manager (Apache-2.0) with bundled RishiDM Chrome/Edge browser integration and a separate yt-dlp-based video assistant. Video support is untested on real Windows and may require FFmpeg for high-quality merges. Installer is unsigned. Normal downloads remain on the AB-based engine. Build run: https://github.com/$GITHUB_REPOSITORY/actions/runs/41110776783. SHA-256: b97d1cb33d6333f1dbde27bfd38030c07248bc206708afa9a0de44643d4522b2. Third-party licensing notices are included in the installer."
