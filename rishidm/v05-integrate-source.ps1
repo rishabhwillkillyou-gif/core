@@ -20,7 +20,8 @@ Edit $implementation '    override suspend fun addDownload(request: NewDownloadT
         awaitAppBoot()
         val queued = com.abdownloadmanager.desktop.media.RishiDMVideoQueue.enqueue(url)
         if (queued) {
-            appComponent.activateHomeIfNotOpen()
+            // UI activation must never turn a successfully queued video into an IPC error.
+            runCatching { appComponent.activateHomeIfNotOpen() }
         }
         return queued
     }
