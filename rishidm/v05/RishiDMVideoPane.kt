@@ -23,7 +23,7 @@ import com.abdownloadmanager.shared.util.ui.myColors
 @Composable
 fun RishiDMVideoPane() {
     val jobs by RishiDMVideoQueue.tasks.collectAsState()
-    if (jobs.isEmpty()) return
+    // Keep the media panel visible even before the first browser handoff.
     Column(
         Modifier.fillMaxWidth().heightIn(max = 245.dp)
             .background(myColors.surface.copy(alpha = 0.9f))
@@ -35,6 +35,21 @@ fun RishiDMVideoPane() {
             Spacer(Modifier.width(12.dp))
             Text("RishiDM • yt-dlp + FFmpeg • Downloads folder",
                 color = myColors.onBackground.copy(alpha = 0.65f))
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ActionButton("Add video URL from clipboard", onClick = {
+                runCatching {
+                    val text = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                        .getData(java.awt.datatransfer.DataFlavor.stringFlavor) as String
+                    RishiDMVideoQueue.enqueue(text.trim())
+                }
+            })
+            Spacer(Modifier.width(10.dp))
+            if (jobs.isEmpty()) {
+                Text("No video tasks yet. Use the browser button or copy a URL and click Add.",
+                    color = myColors.onBackground.copy(alpha = 0.65f))
+            }
         }
         Spacer(Modifier.height(6.dp))
         jobs.asReversed().forEach { job ->
