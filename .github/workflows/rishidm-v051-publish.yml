@@ -1,0 +1,73 @@
+name: Publish RishiDM v0.5.1 browser fix preview
+
+on:
+  push:
+    branches: [rishidm-v051-browser-reliability]
+    paths:
+      - '.github/workflows/rishidm-v051-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch successful Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.5.1-Browser-Media-Fix
+          run-id: 41213153856
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify executable and write checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.5.1_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 180000000
+          test "$(head -c2 "$exe")" = "MZ"
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+      - name: Publish experimental prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.5.1-preview
+          exe=installer/RishiDM_Setup_0.5.1_x64.exe
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          cat > RELEASE_NOTES.txt <<'EOF'
+          RishiDM v0.5.1 — Browser Handoff and Player Overlay Preview
+
+          IMPROVEMENTS
+          - Native messaging now checks the actual success payload, not merely whether a response arrived.
+          - YouTube floating control shows connecting, queued or failed feedback.
+          - Video queue remains visible in the main RishiDM window even when empty.
+          - Manual fallback: Add video URL from clipboard in the in-app media queue.
+          - Generic HTML5 video and iframe overlay, including permitted embedded frames.
+          - Existing yt-dlp/Deno/FFmpeg and 4K video capabilities retained.
+          - Upgrade handoff no longer fails solely because foreground activation fails.
+
+          LIMITATIONS
+          - Experimental: full Windows runtime behavior remains untested.
+          - A floating button is not evidence that a particular embedded stream can be downloaded.
+          - Autoembed webpage links returning 404 are not fixed by showing an overlay.
+          - Arbitrary media extraction is not yet integrated; browser network-aware HLS detection is a future milestone.
+          - No DRM circumvention or unauthorized content downloading.
+          - Main video tasks are shown in a separate IN-WINDOW panel, not the standard download table.
+          - Unsigned installer; preserve previous v0.4/v0.5 installers.
+
+          Build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41213153856
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target rishidm-v051-browser-reliability \
+            --title 'RishiDM v0.5.1 — Browser Media Reliability Preview' \
+            --prerelease --notes-file RELEASE_NOTES.txt
