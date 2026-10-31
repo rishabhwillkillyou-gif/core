@@ -60,8 +60,8 @@ if(!$contents.Contains($before)){throw 'Native handler registration mismatch'}
 $contents=$contents.Replace($before,'            RishiDMVideoNativeHandler(json, appIPC),')
 [IO.File]::WriteAllText($def,$contents,$utf8)
 
-$home='desktop/app/src/main/kotlin/com/abdownloadmanager/desktop/pages/home/HomePage.kt'
-Edit $home '                    var lastSelected by remember { mutableStateOf(null as Long?) }' @'
+$homeRel='desktop/app/src/main/kotlin/com/abdownloadmanager/desktop/pages/home/HomePage.kt'
+Edit $homeRel '                    var lastSelected by remember { mutableStateOf(null as Long?) }' @'
                     // In-app video jobs, controlled by the same desktop process as normal downloads.
                     RishiDMVideoPane()
                     var lastSelected by remember { mutableStateOf(null as Long?) }
