@@ -116,6 +116,7 @@ object RishiDMVideoQueue {
         cancelled.remove(id)
         thread(isDaemon = true, name = "rishidm-video-$id") {
             var last = ""
+            var lastError = ""
             try {
                 val install = com.abdownloadmanager.desktop.utils.AppInfo.installationFolder
                 val folder = install?.let { File(it) } ?: File(System.getProperty("user.dir"))
@@ -160,8 +161,10 @@ object RishiDMVideoQueue {
                             percent != null && percent in 0..100 ->
                                 change(id) { if (it.state == "Downloading" && it.percent == percent) it
                                     else it.copy(state = "Downloading", percent = percent, message = last) }
-                            line.startsWith("ERROR:") ->
-                                change(id) { it.copy(message = last) }
+                            line.startsWith("ERROR:") -> {
+                                lastError = last
+                                change(id) { it.copy(message = lastError) }
+                            }
                         }
                     }
                 }
@@ -171,8 +174,21 @@ object RishiDMVideoQueue {
                         change(id) { it.copy(state = "Cancelled", message = "Cancelled") }
                     code == 0 ->
                         change(id) { it.copy(state = "Completed", percent = 100, message = "Saved to Downloads") }
-                    else ->
-                        change(id) { it.copy(state = "Failed", message = last.ifBlank { "Extractor exit code $code" }) }
+                    else -> {
+                        val reason = lastError.ifBlank { last.ifBlank { "Extractor exit code $code" } }
+                        val guidance = when {
+                            reason.contains("login", ignoreCase = true) ||
+                                reason.contains("sign in", ignoreCase = true) ||
+                                reason.contains("authentication", ignoreCase = true) ->
+                                "Login may be required. RishiDM does not read browser cookies automatically. " + reason
+                            reason.contains("403", ignoreCase = true) ->
+                                "Source denied access (HTTP 403). Check access rights. " + reason
+                            reason.contains("404", ignoreCase = true) ->
+                                "Source returned HTTP 404; changing quality will not repair this URL. " + reason
+                            else -> reason
+                        }
+                        change(id) { it.copy(state = "Failed", message = guidance.take(500)) }
+                    }
                 }
             } catch (e: Exception) {
                 if (cancelled.remove(id)) change(id) { it.copy(state = "Cancelled", message = "Cancelled") }
