@@ -10,7 +10,7 @@ $new=@'
             // Prefer the canonical Reel page URL and never read browser cookies.
             const instagramReel =
               /(^|\.)instagram\.com$/i.test(location.hostname) &&
-              /^\/reel\/[^/]+\/?$/i.test(location.pathname);
+              /^\/reels?\/[^/]+\/?$/i.test(location.pathname);
             const selectedUrl = instagramReel
               ? location.origin + location.pathname
               : (mediaUrl && /^https?:\/\//i.test(mediaUrl) ? mediaUrl : page);
