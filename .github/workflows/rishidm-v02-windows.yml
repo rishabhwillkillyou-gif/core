@@ -8,6 +8,10 @@ on:
       - '.github/workflows/rishidm-v02-windows.yml'
   workflow_dispatch:
 
+concurrency:
+  group: rishidm-v092-media-stages-preview
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
