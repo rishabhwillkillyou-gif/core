@@ -1,15 +1,15 @@
-name: RishiDM v0.9 Visual Interface and Icon
+name: RishiDM v0.9.1 Media Inspector Preview
 
 on:
   push:
-    branches: [rishidm-v09-interface-icon]
+    branches: [rishidm-v091-media-inspector]
     paths:
       - 'rishidm/**'
       - '.github/workflows/rishidm-v02-windows.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -47,13 +47,67 @@ jobs:
           if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
             throw 'NSIS is required to generate the Windows installer'
           }
-      - name: Compile and package RishiDM v0.9
+      - name: Compile and package RishiDM v0.9.1
         shell: pwsh
         run: ./rishidm/build-rishidm-v02.ps1
       - name: Upload RishiDM EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RishiDM-v0.9-Visual-Preview
-          path: rishidm/rishidm-output/RishiDM_Setup_0.9.0_x64.exe
+          name: RishiDM-v0.9.1-Media-Inspector
+          path: rishidm/rishidm-output/RishiDM_Setup_0.9.1_x64.exe
           retention-days: 30
           if-no-files-found: error
+
+  publish-preview:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the successful Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.9.1-Media-Inspector
+          path: installer
+      - name: Validate installer signature and prepare checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.9.1_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 150000000
+          test "$(head -c 2 "$exe")" = "MZ"
+          (cd installer && sha256sum RishiDM_Setup_0.9.1_x64.exe > SHA256SUMS.txt)
+      - name: Publish clearly labeled experimental prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.9.1-media-inspector-preview
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Preview already published; refusing to overwrite it."
+            exit 0
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.9.1 experimental media inspector.
+
+          - Extension popup now shows sanitized per-tab media response counts and eligible candidates.
+          - Refresh and Copy sanitized diagnostics; no signed URLs, cookies or authorization tokens in report.
+          - Generic watch-page URLs are no longer blindly passed to the native video helper.
+          - Known supported extractor sites and eligible non-credentialed HTTP/HLS sources remain usable.
+          - v0.9 native desktop UI, download queue and RishiDM icon are retained.
+
+          LIMITATIONS:
+          - AutoEmbed playback may still not yield an authorized, unprotected independent download.
+          - The existence of video traffic does not prove a supported downloadable source.
+          - Experimental unsigned Windows x64 installer; keep your v0.9 installer for rollback.
+          - Close RishiDM and browser processes before updating the unpacked extension.
+          - Browser-extension UI and runtime detection require hands-on Windows/Chrome testing.
+          - No DRM bypass, cookie extraction or license decryption.
+          EOF
+          gh release create "$tag" \
+            installer/RishiDM_Setup_0.9.1_x64.exe installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v091-media-inspector \
+            --title "RishiDM v0.9.1 — Media Inspector Preview" \
+            --prerelease --notes-file notes.txt
