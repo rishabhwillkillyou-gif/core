@@ -1,8 +1,8 @@
-name: RishiDM v0.5.2 Shorts and Reels Compatibility
+name: RishiDM v0.6 Media Detection and Branding
 
 on:
   push:
-    branches: [rishidm-v052-shortform]
+    branches: [rishidm-v06-media-detector]
     paths:
       - 'rishidm/**'
       - '.github/workflows/rishidm-v02-windows.yml'
@@ -36,13 +36,13 @@ jobs:
           if (-not (Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) {
             throw 'NSIS is required to generate the Windows installer'
           }
-      - name: Compile and package RishiDM v0.5.2
+      - name: Compile and package RishiDM v0.6
         shell: pwsh
         run: ./rishidm/build-rishidm-v02.ps1
       - name: Upload RishiDM EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RishiDM-v0.5.2-Shortform-Preview
-          path: rishidm/rishidm-output/RishiDM_Setup_0.5.2_x64.exe
+          name: RishiDM-v0.6-Media-Preview
+          path: rishidm/rishidm-output/RishiDM_Setup_0.6.0_x64.exe
           retention-days: 30
           if-no-files-found: error
