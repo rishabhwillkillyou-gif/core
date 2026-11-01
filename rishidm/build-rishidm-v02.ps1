@@ -15,7 +15,7 @@ function Edit([string]$rel,[string]$old,[string]$new){
   [IO.File]::WriteAllText($file,$content.Replace($old,$new),$utf8)
 }
 Edit 'settings.gradle.kts' 'rootProject.name = "ABDownloadManager"' 'rootProject.name = "RishiDM"'
-Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.8.0".toVersion()'
+Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.9.0".toVersion()'
 $v='buildSrc/src/main/kotlin/buildlogic/versioning/VersionUtil.kt'
 Edit $v 'return "AB Download Manager"' 'return "RishiDM"'
 Edit $v 'return ".abdm"' 'return ".rishidm"'
@@ -135,7 +135,7 @@ $pkgPath=Join-Path $extensionRoot 'package.json'
 $pkg=Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
 $pkg.displayName='RishiDM Browser Integration'
 $pkg.description='Capture downloads with the RishiDM Windows application'
-$pkg.version='0.8.0'
+$pkg.version='0.9.0'
 [IO.File]::WriteAllText($pkgPath,($pkg | ConvertTo-Json -Depth 20),$utf8)
 foreach($loc in Get-ChildItem (Join-Path $extensionRoot 'public/_locales') -Filter 'messages.json' -Recurse -File){
  $c=[IO.File]::ReadAllText($loc.FullName)
@@ -222,6 +222,27 @@ $nsisText=$nsisText.Replace($successBlock,$successReplacement)
 $nsisText=$nsisText.Replace('Connect Browser.lnk','Connect RishiDM to Chrome or Edge.lnk')
 . (Join-Path $PSScriptRoot 'v03-media-installer.ps1')
 . (Join-Path $PSScriptRoot 'v04-media-installer.ps1')
+# RishiDM v0.9: explicit icon assignment to avoid stale Windows shortcuts.
+$iconSource=Join-Path $src 'desktop/app/icons/icon.ico'
+if(!(Test-Path $iconSource)){throw 'RishiDM icon not generated'}
+$nsisLine='    File /nonfatal /r '
+if(([regex]::Matches($nsisText,[regex]::Escape($nsisLine))).Count -ne 1){
+  throw 'Expected unique application File line in NSIS template'
+}
+$nsisText=$nsisText.Replace($nsisLine,
+   ('    File /oname=RishiDM-v09.ico "'+$iconSource+'"' + [char]10 + $nsisLine))
+$startOld='createShortCut "$SMPROGRAMS\${APP_DISPLAY_NAME}\${APP_DISPLAY_NAME}.lnk" "${INSTALL_DIR}\${MAIN_BINARY_NAME}.exe"'
+$startNew='createShortCut "$SMPROGRAMS\${APP_DISPLAY_NAME}\${APP_DISPLAY_NAME}.lnk" "${INSTALL_DIR}\${MAIN_BINARY_NAME}.exe" "" "${INSTALL_DIR}\RishiDM-v09.ico" 0'
+if(!$nsisText.Contains($startOld)){throw 'Start Menu shortcut marker not found'}
+$nsisText=$nsisText.Replace($startOld,$startNew)
+$deskOld='CreateShortcut "$DESKTOP\${APP_DISPLAY_NAME}.lnk" "${INSTALL_DIR}\${MAIN_BINARY_NAME}.exe"'
+$deskNew='CreateShortcut "$DESKTOP\${APP_DISPLAY_NAME}.lnk" "${INSTALL_DIR}\${MAIN_BINARY_NAME}.exe" "" "${INSTALL_DIR}\RishiDM-v09.ico" 0'
+if(!$nsisText.Contains($deskOld)){throw 'Desktop shortcut marker not found'}
+$nsisText=$nsisText.Replace($deskOld,$deskNew)
+$cleanOld='    Delete "${INSTALL_DIR}\${MAIN_BINARY_NAME}.ico"'
+if(!$nsisText.Contains($cleanOld)){throw 'Icon cleanup marker not found'}
+$nsisText=$nsisText.Replace($cleanOld,$cleanOld+[char]10+'    Delete "${INSTALL_DIR}\RishiDM-v09.ico"')
+Write-Host 'RishiDM v0.9 installer writes versioned ICO and resets desktop/start shortcut icon paths.'
 [IO.File]::WriteAllText($nsis,$nsisText,$utf8)
 Write-Host 'Built Chrome/Firefox extension and embedded it in RishiDM installer.'
 # ---- End v0.2 additions ----
@@ -236,7 +257,7 @@ try {
 $bin=Join-Path $src 'build/ci-release/binaries'
 $exe=Get-ChildItem $bin -Filter 'RishiDM_*_windows_x64.exe' | Select-Object -First 1
 if(-not $exe){throw "No Windows x64 EXE produced"}
-$target=Join-Path $out 'RishiDM_Setup_0.8.0_x64.exe'
+$target=Join-Path $out 'RishiDM_Setup_0.9.0_x64.exe'
 Copy-Item $exe.FullName $target -Force
 $stream=[IO.File]::OpenRead($target)
 try{
