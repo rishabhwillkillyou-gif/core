@@ -1,0 +1,62 @@
+name: Publish RishiDM v0.7 Brand Preview
+
+on:
+  push:
+    branches: [rishidm-v07-polish-diagnostics]
+    paths:
+      - '.github/workflows/rishidm-v07-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Retrieve successful v0.7 Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.7-Brand-Preview
+          run-id: 41314767449
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify installer and calculate SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.7.0_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 180000000
+          test "$(head -c2 "$exe")" = "MZ"
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+      - name: Publish experimental preview release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.7.0-preview
+          exe=installer/RishiDM_Setup_0.7.0_x64.exe
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite."
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.7.0 — Visual Identity Preview
+
+          - Original RishiDM icon and more consistent branding in Windows and the browser extension.
+          - Retains the v0.6 media detector and YouTube/Shorts/Instagram and standard download engines.
+          - Experimental preview; Windows CI passed, but icon appearance and browser runtime behavior need manual testing.
+          - Not yet a complete interface polish or media diagnostics overhaul.
+          - Exit any running RishiDM tray process before installing over v0.6.
+          - Refresh unpacked browser extensions after installation.
+          - Keep the previous installer for rollback.
+          - Download only media you are authorized to save. No DRM bypass.
+          Build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41314767449
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target rishidm-v07-polish-diagnostics \
+            --title "RishiDM v0.7.0 — Brand Preview" --prerelease --notes-file notes.txt
