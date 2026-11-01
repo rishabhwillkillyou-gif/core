@@ -228,7 +228,7 @@ private fun RishiDMStyledRow(job: RishiVideoTask) {
                     .background(Color(0xFF34384F))) {
                     Box(Modifier.fillMaxWidth(job.percent.coerceIn(0,100)/100f).fillMaxHeight()
                         .clip(RoundedCornerShape(5.dp))
-                        .background(if (done) success else accentGradient))
+                        .background(if (done) SolidColor(success) else accentGradient))
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(job.percent.coerceIn(0,100).toString() + "%" +
