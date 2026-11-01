@@ -1,0 +1,87 @@
+name: Publish RishiDM v0.9 Visual Interface Preview
+
+on:
+  push:
+    branches: [rishidm-v09-interface-icon]
+    paths: ['.github/workflows/rishidm-v09-publish.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Retrieve successful Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.9-Visual-Preview
+          run-id: 41323732832
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify PE executable and calculate SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.9.0_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 170000000
+          test "$(head -c 2 "$exe")" = "MZ"
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+      - name: Publish experimental prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.9.0-preview
+          exe=installer/RishiDM_Setup_0.9.0_x64.exe
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.9.0 — Native Visual Polish + Windows Icon Repair
+
+          VISUAL CHANGES
+          - Original violet/blue Add Download control in native toolbar.
+          - Rebuilt media dashboard with a distinct styled title bar and violet
+            accents, All / Active / Completed / Failed filter chips, a compact
+            video table, status badges and more consistent progress indicators.
+          - Task actions remain contextual (Open File, Open Folder, Resume,
+            quality selection). Display only real title, format, speed and
+            file-size data available from current download records.
+          - Installer ships a dedicated RishiDM-v09.ico, explicitly used by the
+            desktop and Start Menu shortcuts to reduce stale Windows icons.
+
+          RETAINED
+          - Ordinary HTTP segmented downloads and resume.
+          - YouTube, Shorts, Instagram and standard site video engine (yt-dlp,
+            FFmpeg, Deno), Chrome/Brave extension compatibility.
+          - Read-only frame-aware media diagnostics from v0.8.
+
+          LIMITATIONS
+          - Windows CI succeeded, but actual UI appearance and desktop icon
+            refresh are NOT independently tested on the user's Windows PC.
+          - Does not fully replace all upstream AB UI; the standard categories
+            and normal file download table remain.
+          - Not a pixel-accurate copy of the earlier concept illustration;
+            actual video thumbnails are not yet implemented.
+          - Does NOT resolve AutoEmbed's unsupported player/stream problem.
+            Seeing HLS or video requests does not necessarily mean a
+            downloadable, accessible unprotected source exists.
+          - Video and normal file jobs remain in two sections.
+          - Unsigned installer. Close app and tray before upgrade, update unpacked
+            browser extensions, keep v0.8 for rollback.
+          - For authorized, unprotected downloads only. No DRM bypass.
+          Build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41323732832
+          Source: https://github.com/rishabhwillkillyou-gif/core/tree/rishidm-v09-interface-icon
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v09-interface-icon \
+            --title "RishiDM v0.9.0 — Visual Polish Preview" \
+            --prerelease --notes-file notes.txt
