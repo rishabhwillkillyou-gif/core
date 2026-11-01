@@ -1,0 +1,82 @@
+name: Publish RishiDM v0.6 Media Detection Preview
+
+on:
+  push:
+    branches: [rishidm-v06-media-detector]
+    paths:
+      - '.github/workflows/rishidm-v06-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Retrieve successful v0.6 Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.6-Media-Preview
+          run-id: 41311082186
+          github-token: ${{ github.token }}
+          path: installer
+
+      - name: Verify EXE identity and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.6.0_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 180000000
+          test "$(head -c2 "$exe")" = 'MZ'
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+
+      - name: Publish signed-off experimental release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.6.0-preview
+          exe=installer/RishiDM_Setup_0.6.0_x64.exe
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace the artifact.'
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.6.0 — Media Detection and Branding Preview (Windows x64)
+
+          CHANGES
+          - Correct leftover 'Download With ABDM' translation: RishiDM branding in the media popup.
+          - Reuse upstream AB browser-extension media registry to pick detected direct
+            video/HLS sources when the user explicitly clicks the floating control.
+          - Filter tiny audio responses under 256 KB from media suggestions,
+            reducing notification-sound popups without suppressing normal downloads.
+          - Recognize common TS/fMP4 HLS segment types when unencrypted.
+          - Do not queue a generic iframe webpage as a video when no confirmed
+            media source was detected; display 'No supported stream detected'.
+          - Keep working YouTube, Shorts, Instagram Reels, 4K video and Chrome/Brave support.
+
+          LIMITATIONS AND SAFETY
+          - Experimental: Windows compilation passed; browser/runtime behavior not yet
+            independently tested.
+          - Autoembed or other embedded player compatibility is NOT guaranteed.
+          - Media detection does not bypass encrypted streams, DRM or site access controls.
+          - Authenticated media requiring browser cookies/authorization is not passed
+            silently to the video helper.
+          - The video queue remains a distinct section of the desktop app.
+          - Unsigned preview installer. Exit RishiDM and keep v0.5.2 for rollback.
+          - Third-party source/license information is bundled.
+
+          Source: https://github.com/rishabhwillkillyou-gif/core/tree/rishidm-v06-media-detector
+          Windows build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41311082186
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v06-media-detector \
+            --title 'RishiDM v0.6.0 — Media Detection Preview' \
+            --prerelease \
+            --notes-file notes.txt
