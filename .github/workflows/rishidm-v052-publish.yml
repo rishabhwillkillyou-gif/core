@@ -1,0 +1,66 @@
+name: Publish RishiDM v0.5.2 Shorts preview
+on:
+  push:
+    branches: [rishidm-v052-shortform]
+    paths: ['.github/workflows/rishidm-v052-publish.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch validated Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.5.2-Shortform-Preview
+          run-id: 41229867634
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify Windows executable and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=installer/RishiDM_Setup_0.5.2_x64.exe
+          test -f "$file"
+          test "$(stat -c %s "$file")" -gt 180000000
+          test "$(head -c2 "$file")" = 'MZ'
+          sha256sum "$file" | tee installer/SHA256SUMS.txt
+      - name: Release preview installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.5.2-preview
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.5.2 — Short-form Video Experimental Preview
+
+          Changes:
+          - Dedicated floating download control on YouTube /shorts/ pages.
+          - Route Instagram /reel/ and /reels/ player requests by canonical page URL instead of temporary CDN media links.
+          - More informative yt-dlp failures for login-required, 403 and 404 results.
+          - Retains Chrome and Brave integration, in-app video queue, 4K options and bundled ffmpeg/Deno.
+
+          Limitations:
+          - This is a development preview: successfully compiled but not independently Windows-runtime tested.
+          - Instagram extraction may remain unreliable due to upstream yt-dlp changes.
+          - Autoembed page 404 has not been addressed.
+          - Don't use the generic "New Download" box for Shorts; use the browser download button or "Add video URL from clipboard" in the video section.
+          - No DRM circumvention and no automatic browser-cookie collection.
+          - Installer unsigned. Close RishiDM fully before upgrading and keep v0.5.1 as rollback.
+
+          Build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41229867634
+          EOF
+          gh release create "$tag" installer/RishiDM_Setup_0.5.2_x64.exe installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target rishidm-v052-shortform \
+            --title 'RishiDM v0.5.2 — Shorts and Reels Preview' \
+            --prerelease --notes-file notes.txt
