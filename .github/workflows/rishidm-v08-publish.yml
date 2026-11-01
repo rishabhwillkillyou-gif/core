@@ -1,0 +1,84 @@
+name: Publish RishiDM v0.8 UI and Media Diagnostics Preview
+
+on:
+  push:
+    branches: [rishidm-v08-ui-media-diagnostics]
+    paths: ['.github/workflows/rishidm-v08-publish.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download compiled RishiDM v0.8 installer
+        uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-v0.8-Media-Diagnostics-Preview
+          run-id: 41319122711
+          github-token: ${{ github.token }}
+          path: installer
+      - name: Verify installer and generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.8.0_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 180000000
+          test "$(head -c 2 "$exe")" = "MZ"
+          sha256sum "$exe" | tee installer/SHA256SUMS.txt
+      - name: Publish experimental preview
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=rishidm-v0.8.0-preview
+          exe=installer/RishiDM_Setup_0.8.0_x64.exe
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite" >&2
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.8.0 — UI & Frame-Aware Media Diagnostics (Experimental Windows Preview)
+
+          UI:
+          - Collapsible compact media dashboard replacing bulky always-visible video cards.
+          - Dedicated editable video URL input plus Paste and Add Video.
+          - Video titles from yt-dlp where available; speed and ETA progress fields.
+          - Contextual Open File, Open Folder, Remove, Resume/Stop/quality controls.
+          - Clear finished video tasks while preserving normal AB-based download table.
+
+          MEDIA DETECTION:
+          - Share detected media candidates in the browser background, keyed by active tab,
+            across permitted cross-origin frames.
+          - Explicit user-initiated downloads of supported HTTP video and unencrypted HLS.
+          - Recognize but do not automatically download DASH manifests.
+          - Sanitized on-page media diagnostics report counts and types, never media
+            authorization credentials or signed stream URLs.
+          - Avoid blindly queuing unknown embedded-player page URLs when no source is found.
+          - Retain existing Chrome/Brave, YouTube, Shorts, Instagram and ordinary downloads.
+
+          LIMITATIONS:
+          - Browser/Windows runtime behavior is NOT independently tested, although CI passed.
+          - Video jobs remain a compact separate section, not yet merged into the
+            original HTTP task scheduler.
+          - AutoEmbed downloads are NOT guaranteed; unsupported/DRM-protected media
+            and access controls cannot be bypassed.
+          - Unsigned preview EXE. Fully close RishiDM including system tray before
+            installing over v0.7 and refresh unpacked browser extensions.
+          - Keep v0.7 for rollback and test normal download/resume behavior first.
+          - Download only material you are authorized to save.
+
+          Windows build: https://github.com/rishabhwillkillyou-gif/core/actions/runs/41319122711
+          Source: https://github.com/rishabhwillkillyou-gif/core/tree/rishidm-v08-ui-media-diagnostics
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v08-ui-media-diagnostics \
+            --title "RishiDM v0.8.0 — UI & Media Diagnostics Preview" \
+            --prerelease --notes-file notes.txt
