@@ -3,6 +3,7 @@
 $encoding=New-Object System.Text.UTF8Encoding($false)
 function Patch-Single([string]$path,[string]$find,[string]$replace){
  $srcText=[IO.File]::ReadAllText($path).Replace(([char]13).ToString(),'')
+ $find=$find.Replace(([char]13).ToString(),'').TrimEnd([char]10)
  $count=([regex]::Matches($srcText,[regex]::Escape($find))).Count
  if($count -ne 1){throw "RishiDM v0.6 patch mismatch ($count matches): $path -- $find"}
  [IO.File]::WriteAllText($path,$srcText.Replace($find,$replace),$encoding)
