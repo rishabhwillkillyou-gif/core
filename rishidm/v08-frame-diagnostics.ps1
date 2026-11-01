@@ -160,7 +160,8 @@ $new=@'
             }
             const selectedUrl = instagramReel
                 ? location.origin + location.pathname
-                : (mediaUrl && /^https?:\/\//i.test(mediaUrl) ? mediaUrl : (video ? page : null));
+                : (mediaUrl && /^https?:\/\//i.test(mediaUrl) ? mediaUrl :
+                    (video && /(^|\.)(youtube\.com|instagram\.com|vimeo\.com|tiktok\.com|dailymotion\.com)$/i.test(location.hostname) ? page : null));
             if (!selectedUrl) {
                 const observed = snapshot?.observations || {};
                 const evidence = Object.entries(observed)
