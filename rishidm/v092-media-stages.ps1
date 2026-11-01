@@ -133,6 +133,7 @@ Edit092 $popup @'
                 observations: result.observations || {},
                 stages: result.stages || {}
 '@
+Edit092 $popup 'app: "RishiDM 0.9.1"' 'app: "RishiDM 0.9.2"'
 Edit092 $popup @'
             counts: snapshot?.observations || {},
 '@ @'
