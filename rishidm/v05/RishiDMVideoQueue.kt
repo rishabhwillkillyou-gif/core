@@ -21,7 +21,11 @@ data class RishiVideoTask(
     val state: String = "Queued",
     val quality: String = "4K",
     val percent: Int = 0,
-    val message: String = "Select a quality to start"
+    val message: String = "Select a quality to start",
+    val title: String = "",
+    val savedPath: String = "",
+    val transferSpeed: String = "",
+    val eta: String = ""
 )
 
 /** Video tasks live in the DESKTOP process, not the short-lived native host. */
@@ -91,6 +95,34 @@ object RishiDMVideoQueue {
         return true
     }
 
+    fun clearFinished() {
+        synchronized(guard) {
+            val updated = state.value.filterNot { it.state == "Completed" }
+            state.value = updated
+            persist(updated)
+        }
+    }
+
+    fun openDownloadsFolder() {
+        runCatching {
+            val dir = File(System.getProperty("user.home"), "Downloads")
+            dir.mkdirs()
+            if (java.awt.Desktop.isDesktopSupported())
+                java.awt.Desktop.getDesktop().open(dir)
+        }
+    }
+
+    fun openFile(id: String) {
+        val path = state.value.firstOrNull { it.id == id && it.state == "Completed" }?.savedPath ?: return
+        val dir = File(System.getProperty("user.home"), "Downloads").canonicalFile
+        val file = File(path).canonicalFile
+        if (!file.isFile || !file.path.startsWith(dir.path + File.separator)) return
+        runCatching {
+            if (java.awt.Desktop.isDesktopSupported())
+                java.awt.Desktop.getDesktop().open(file)
+        }
+    }
+
     fun remove(id: String) {
         if (running.containsKey(id)) return
         synchronized(guard) {
@@ -117,6 +149,8 @@ object RishiDMVideoQueue {
         thread(isDaemon = true, name = "rishidm-video-$id") {
             var last = ""
             var lastError = ""
+            val speedPattern = Regex("""\bat\s+([^\s]+/s)""")
+            val etaPattern = Regex("""\bETA\s+([^\s]+)""")
             try {
                 val install = com.abdownloadmanager.desktop.utils.AppInfo.installationFolder
                 val folder = install?.let { File(it) } ?: File(System.getProperty("user.dir"))
@@ -143,6 +177,8 @@ object RishiDMVideoQueue {
                     "--concurrent-fragments", "4",
                     "--ffmpeg-location", ff.absolutePath, "--js-runtimes", "deno:" + deno.absolutePath,
                     "--format", fmt, "--merge-output-format", "mkv",
+                    "--print", "before_dl:RISHIDM_TITLE:%(title)s",
+                    "--print", "after_move:RISHIDM_FILE:%(filepath)s",
                     "-o", File(output, "%(title).150B [%(id)s].%(ext)s").absolutePath,
                     "--", job.url
                 )
@@ -156,11 +192,33 @@ object RishiDMVideoQueue {
                         val percent = percentRegex.find(line)?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
                         when {
                             id in cancelled -> Unit
+                            line.startsWith("RISHIDM_TITLE:") -> {
+                                val value = line.removePrefix("RISHIDM_TITLE:")
+                                    .replace(Regex("[\\p{Cntrl}]"), " ").trim().take(160)
+                                if (value.isNotBlank())
+                                    change(id) { it.copy(title = value) }
+                            }
+                            line.startsWith("RISHIDM_FILE:") -> {
+                                val proposed = File(line.removePrefix("RISHIDM_FILE:").trim())
+                                val canonical = runCatching { proposed.canonicalFile }.getOrNull()
+                                val parent = output.canonicalFile
+                                if (canonical != null && canonical.path.startsWith(parent.path + File.separator)) {
+                                    change(id) { it.copy(savedPath = canonical.path) }
+                                }
+                            }
                             line.startsWith("[Merger]") || line.startsWith("[ExtractAudio]") ->
                                 change(id) { it.copy(state = "Processing", message = "Merging media tracks") }
-                            percent != null && percent in 0..100 ->
-                                change(id) { if (it.state == "Downloading" && it.percent == percent) it
-                                    else it.copy(state = "Downloading", percent = percent, message = last) }
+                            percent != null && percent in 0..100 -> {
+                                val speed = speedPattern.find(line)?.groupValues?.get(1) ?: ""
+                                val eta = etaPattern.find(line)?.groupValues?.get(1) ?: ""
+                                change(id) {
+                                    if (it.state == "Downloading" && it.percent == percent &&
+                                        it.transferSpeed == speed && it.eta == eta) it
+                                    else it.copy(state = "Downloading", percent = percent,
+                                        transferSpeed = speed, eta = eta,
+                                        message = "Downloading video and audio")
+                                }
+                            }
                             line.startsWith("ERROR:") -> {
                                 lastError = last
                                 change(id) { it.copy(message = lastError) }
