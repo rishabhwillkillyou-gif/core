@@ -156,6 +156,10 @@ $nativeIcon=Join-Path $src 'shared/resources/src/commonMain/kotlin/com/abdownloa
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'branding/RishiDMAppIcon.kt') -Destination $nativeIcon -Force
 if(!(Test-Path (Join-Path $src 'desktop/app/icons/icon.ico'))){throw 'RishiDM Windows icon missing'}
 Write-Host 'Original RishiDM icon applied: Windows EXE, installer, native UI, browser extension.'
+$toolbarSrc=Join-Path $PSScriptRoot 'v09/RishiDMAddUrlButton.kt'
+$toolbarDst=Join-Path $src 'shared/app/src/commonMain/kotlin/com/abdownloadmanager/shared/ui/widget/AddUrlButton.kt'
+Copy-Item -LiteralPath $toolbarSrc -Destination $toolbarDst -Force
+Write-Host 'RishiDM v0.9: native toolbar call-to-action styled with original gradient.'
 
 Push-Location $extensionRoot
 try {
