@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install 'Pillow==11.3.0'
           if (!(Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) { choco install nsis -y --no-progress }
-      - name: Compile, HLS/Dropbox regression tests, package installer
+      - name: Compile, HLS/Dropbox/XHR regression tests, package installer
         shell: pwsh
         run: ./rishidm/build-rishidm-v02.ps1
       - name: Verify actual installer payload
@@ -83,7 +83,7 @@ jobs:
           test "$(stat -c %s "$exe")" -gt 150000000
           test "$(head -c 2 "$exe")" = "MZ"
           (cd installer && sha256sum RishiDM_Setup_0.9.6_x64.exe > SHA256SUMS.txt)
-          tag=rishidm-v0.9.6-dropbox-preview
+          tag=rishidm-v0.9.6-media-insight-preview
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'Release already exists; refusing to overwrite.' >&2
             exit 1
