@@ -1,0 +1,116 @@
+name: RishiDM v0.9.5 Dropbox-safe handoff
+on:
+  push:
+    branches: [rishidm-v095-dropbox-safe-handoff]
+    paths: ['rishidm/**', '.github/workflows/rishidm-dropbox-safe-handoff.yml']
+  workflow_dispatch:
+concurrency:
+  group: rishidm-v095-dropbox-safe-handoff
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare build tools
+        shell: pwsh
+        run: |
+          python -m pip install 'Pillow==11.3.0'
+          if (!(Test-Path 'C:\Program Files (x86)\NSIS\makensis.exe')) { choco install nsis -y --no-progress }
+      - name: Compile, HLS/Dropbox regression tests, package installer
+        shell: pwsh
+        run: ./rishidm/build-rishidm-v02.ps1
+      - name: Verify actual installer payload
+        shell: pwsh
+        run: |
+          7z x rishidm/rishidm-output/RishiDM_Setup_0.9.5_x64.exe -oinstaller-payload -y
+          if ($LASTEXITCODE -ne 0) { throw 'Installer extraction failed' }
+          $manifest=Get-Content installer-payload/BrowserExtension/Chrome/manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.version -ne '0.9.5' -or !$manifest.key) { throw 'Incorrect extension payload' }
+          foreach ($file in @('RishiDM.exe','RishiDMNativeMessagingHost.exe','RishiDM-v09.ico','VideoTools/yt-dlp.exe','VideoTools/FFmpeg/ffmpeg.exe','VideoTools/deno.exe')) {
+            if (!(Test-Path (Join-Path installer-payload $file))) { throw "Missing payload: $file" }
+          }
+          node rishidm/tests/media-download.cjs installer-payload/VideoTools synthetic-media-test
+          if ($LASTEXITCODE -ne 0) { throw 'Media regression failed' }
+      - name: Exercise packaged browser extension in Chromium
+        shell: pwsh
+        run: |
+          npm ci --prefix rishidm/tests --no-audit --no-fund
+          node rishidm/tests/node_modules/playwright/cli.js install chromium
+          node rishidm/tests/browser-regression.cjs installer-payload/BrowserExtension/Chrome
+          if ($LASTEXITCODE -ne 0) { throw 'Chromium regression failed' }
+      - name: Hash validated installer
+        shell: pwsh
+        run: |
+          $hash=(Get-FileHash rishidm/rishidm-output/RishiDM_Setup_0.9.5_x64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  RishiDM_Setup_0.9.5_x64.exe" | Set-Content rishidm/rishidm-output/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RishiDM-0.9.5-Dropbox-Safe-Handoff
+          path: rishidm/rishidm-output/RishiDM_Setup_0.9.5_x64.exe
+          if-no-files-found: error
+          retention-days: 30
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RishiDM-0.9.5-Dropbox-Safe-Handoff
+          path: installer
+      - name: Validate and publish experimental release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          exe=installer/RishiDM_Setup_0.9.5_x64.exe
+          test -f "$exe"
+          test "$(stat -c %s "$exe")" -gt 150000000
+          test "$(head -c 2 "$exe")" = "MZ"
+          (cd installer && sha256sum RishiDM_Setup_0.9.5_x64.exe > SHA256SUMS.txt)
+          tag=rishidm-v0.9.5-dropbox-preview
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite.' >&2
+            exit 1
+          fi
+          cat > notes.txt <<'EOF'
+          RishiDM v0.9.5 — Dropbox-safe handoff experimental preview.
+
+          - Dropbox CDN and shared-file downloads default to Chrome's native transfer;
+            automatic capture will not cancel them before independent verification.
+          - RishiDM extension popup offers a one-click Download Dropbox file
+            with RishiDM action on original public Dropbox shared-file pages.
+          - Explicit action converts the share link's dl parameter to dl=1
+            without collecting cookies or passing temporary Dropbox CDN URLs.
+          - Preserves v0.9.4 UI, media tools, branding, HLS diagnostics and normal downloads.
+          - Tests include offline Dropbox URL/fallback guards, HLS regressions,
+            packaged Chromium tests and Windows payload validation.
+
+          Known limitations:
+          - Does not automatically capture Dropbox files into RishiDM; Chrome
+            remains responsible unless user explicitly chooses RishiDM.
+          - Desktop queue acceptance is not proof that a later transfer will complete.
+          - Not verified against Dropbox production servers or your PC; test with a
+            publicly accessible file first. Private or passworded shares may not work.
+          - Unsigned Windows installer. Retain v0.9.4 for rollback.
+          EOF
+          gh release create "$tag" "$exe" installer/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target rishidm-v095-dropbox-safe-handoff \
+            --title "RishiDM v0.9.5 — Dropbox-safe Handoff Preview" \
+            --prerelease --notes-file notes.txt
