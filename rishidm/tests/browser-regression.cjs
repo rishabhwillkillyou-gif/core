@@ -25,6 +25,29 @@ const server=http.createServer((req,res)=>{
   if(u.pathname==='/media.m3u8') {res.writeHead(404);return res.end();}
   if(u.pathname.startsWith('/status/')) {res.writeHead(Number(u.pathname.split('/')[2]));return res.end();}
   if(u.pathname==='/encrypted.m3u8') return res.end(media.replace('#EXTINF:','#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:'));
+  if(u.pathname==='/xhr-video.mp4') {
+    res.setHeader('Content-Type','video/mp4');
+    res.setHeader('Content-Length','1048576');
+    return res.end(Buffer.alloc(1048576,0x2a));
+  }
+  if(u.pathname==='/xhr-partial.mp4') {
+    res.writeHead(206,{'Content-Type':'video/mp4','Content-Range':'bytes 0-1023/1048576','Content-Length':'1024'});
+    return res.end(Buffer.alloc(1024,0x2a));
+  }
+  if(u.pathname==='/xhr-segment.m4s') {
+    res.setHeader('Content-Type','video/mp4');
+    res.setHeader('Content-Length','1048576');
+    return res.end(Buffer.alloc(1048576,0x2a));
+  }
+  if(u.pathname==='/xhr-manifest') {
+    res.setHeader('Content-Type','application/vnd.apple.mpegurl');
+    return res.end(media);
+  }
+  if(u.pathname==='/xhr-dash') {
+    res.setHeader('Content-Type','application/dash+xml');
+    return res.end('<MPD></MPD>');
+  }
+
   res.end(media);
 });
 (async()=>{
@@ -72,6 +95,40 @@ const server=http.createServer((req,res)=>{
       assert.equal(snapshot.candidates.some(x=>x.downloadable),accepted,JSON.stringify({route,snapshot}));
       assert.ok(snapshot.stages.interceptedHLS>0);
       console.log('Chromium iframe:',route,accepted?'candidate published':'correctly rejected');
+      await page.close();
+    }
+
+    // v0.9.6: XHR media and fragments in the installed extension.
+    for(const [route,kind,expectCandidate] of [
+      ['/xhr-video.mp4','xhr-standalone-video',true],
+      ['/xhr-partial.mp4','xhr-partial',false],
+      ['/xhr-segment.m4s','xhr-segment',false],
+      ['/xhr-manifest','hls-nonstandard-path',true],
+      ['/xhr-dash','dash-observed',false]
+    ]) {
+      const page=await context.newPage();
+      const cdp=await context.newCDPSession(page);
+      const worlds=[];
+      cdp.on('Runtime.executionContextCreated',({context})=>worlds.push(context));
+      await cdp.send('Runtime.enable');
+      await page.goto(base+'/player?route='+encodeURIComponent(route));
+      await page.frames()[1].evaluate(async route=>{await fetch(route).then(r=>r.arrayBuffer());},route);
+      let snapshot;
+      for(let i=0;i<60;i++){
+        const world=worlds.find(w=>w.origin===('chrome-extension://' + id) || w.name===manifest.name);
+        if(!world) {await new Promise(r=>setTimeout(r,100));continue;}
+        const answer=await cdp.send('Runtime.evaluate',{
+          contextId:world.id,expression:"chrome.runtime.sendMessage({rishidmMediaAction:'inspect'})",
+          awaitPromise:true,returnByValue:true});
+        snapshot=answer.result.value;
+        if((snapshot?.responseAnalysis?.[kind] || 0)>0 &&
+           (!expectCandidate || snapshot.candidates?.some(x=>x.downloadable))) break;
+        await new Promise(r=>setTimeout(r,100));
+      }
+      assert.ok((snapshot?.responseAnalysis?.[kind] || 0)>0,JSON.stringify({route,snapshot}));
+      assert.equal(snapshot.candidates.some(x=>x.downloadable),expectCandidate,
+        JSON.stringify({route,snapshot}));
+      console.log('Chromium XHR:',route,kind,expectCandidate?'candidate':'observation only');
       await page.close();
     }
     console.log('PASS: packaged MV3 worker, webRequest interception, iframe attribution, popup messaging, public/conditional/redirected HLS and denial/encryption gates.');
