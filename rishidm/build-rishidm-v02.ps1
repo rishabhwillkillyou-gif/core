@@ -15,7 +15,7 @@ function Edit([string]$rel,[string]$old,[string]$new){
   [IO.File]::WriteAllText($file,$content.Replace($old,$new),$utf8)
 }
 Edit 'settings.gradle.kts' 'rootProject.name = "ABDownloadManager"' 'rootProject.name = "RishiDM"'
-Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.9.3".toVersion()'
+Edit 'build.gradle.kts' 'version = (gitVersion.getVersion() ?: fallBackVersion).toVersion()' 'version = "0.9.4".toVersion()'
 $v='buildSrc/src/main/kotlin/buildlogic/versioning/VersionUtil.kt'
 Edit $v 'return "AB Download Manager"' 'return "RishiDM"'
 Edit $v 'return ".abdm"' 'return ".rishidm"'
@@ -135,7 +135,7 @@ $pkgPath=Join-Path $extensionRoot 'package.json'
 $pkg=Get-Content -LiteralPath $pkgPath -Raw | ConvertFrom-Json
 $pkg.displayName='RishiDM Browser Integration'
 $pkg.description='Capture downloads with the RishiDM Windows application'
-$pkg.version='0.9.3'
+$pkg.version='0.9.4'
 [IO.File]::WriteAllText($pkgPath,($pkg | ConvertTo-Json -Depth 20),$utf8)
 foreach($loc in Get-ChildItem (Join-Path $extensionRoot 'public/_locales') -Filter 'messages.json' -Recurse -File){
  $c=[IO.File]::ReadAllText($loc.FullName)
@@ -150,6 +150,7 @@ foreach($loc in Get-ChildItem (Join-Path $extensionRoot 'public/_locales') -Filt
 . (Join-Path $PSScriptRoot 'v091-media-inspector.ps1')
 . (Join-Path $PSScriptRoot 'v092-media-stages.ps1')
 . (Join-Path $PSScriptRoot 'v093-hls-failure-diagnostics.ps1')
+. (Join-Path $PSScriptRoot 'v094-public-hls.ps1')
 . (Join-Path $PSScriptRoot 'v05-integrate-source.ps1')
 # Apply original RishiDM identity to every visible surface before packaging.
 $brandGenerator=Join-Path $PSScriptRoot 'branding/generate_brand_assets.py'
@@ -168,6 +169,8 @@ Push-Location $extensionRoot
 try {
  npm ci --no-audit --no-fund
  if($LASTEXITCODE -ne 0){throw 'Extension npm ci failed'}
+ node (Join-Path $PSScriptRoot 'tests/hls-regression.cjs') $extensionRoot
+ if($LASTEXITCODE -ne 0){throw 'Public HLS regression checks failed'}
  npm run build
  if($LASTEXITCODE -ne 0){throw 'Extension build failed'}
 }finally{Pop-Location}
@@ -264,7 +267,7 @@ try {
 $bin=Join-Path $src 'build/ci-release/binaries'
 $exe=Get-ChildItem $bin -Filter 'RishiDM_*_windows_x64.exe' | Select-Object -First 1
 if(-not $exe){throw "No Windows x64 EXE produced"}
-$target=Join-Path $out 'RishiDM_Setup_0.9.3_x64.exe'
+$target=Join-Path $out 'RishiDM_Setup_0.9.4_x64.exe'
 Copy-Item $exe.FullName $target -Force
 $stream=[IO.File]::OpenRead($target)
 try{
