@@ -25,6 +25,9 @@ const server=http.createServer((req,res)=>{
   if(u.pathname==='/media.m3u8') {res.writeHead(404);return res.end();}
   if(u.pathname.startsWith('/status/')) {res.writeHead(Number(u.pathname.split('/')[2]));return res.end();}
   if(u.pathname==='/encrypted.m3u8') return res.end(media.replace('#EXTINF:','#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:'));
+  if(u.pathname==='/fmp4-extensionless.m3u8') return res.end(
+    '#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:2\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nchunks/0001\n#EXTINF:2,\nchunks/0002\n#EXT-X-ENDLIST\n');
+
   if(u.pathname==='/xhr-video.mp4') {
     res.setHeader('Content-Type','video/mp4');
     res.setHeader('Content-Length','1048576');
@@ -72,7 +75,7 @@ const server=http.createServer((req,res)=>{
       console.log('popup permissions',await popup.evaluate(()=>chrome.permissions.getAll()));
       await worker.evaluate(()=>{globalThis.testSenders=[];chrome.runtime.onMessage.addListener((m,s)=>{if(m.rishidmMediaAction==='inspect')globalThis.testSenders.push({tab:s.tab?.id,requested:m.tabId});});});
     }
-    for(const [route,accepted] of [['/public.m3u8',true],['/cached.m3u8',true],['/start.m3u8',true],['/status/401/file.m3u8',false],['/status/403/file.m3u8',false],['/status/404/file.m3u8',false],['/encrypted.m3u8',false]]) {
+    for(const [route,accepted] of [['/public.m3u8',true],['/cached.m3u8',true],['/start.m3u8',true],['/fmp4-extensionless.m3u8',true],['/status/401/file.m3u8',false],['/status/403/file.m3u8',false],['/status/404/file.m3u8',false],['/encrypted.m3u8',false]]) {
       const page=await context.newPage();
       const cdp=await context.newCDPSession(page);
       const worlds=[];
