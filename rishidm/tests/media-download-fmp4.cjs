@@ -25,8 +25,8 @@ function run(bin,args) {return new Promise((resolve,reject)=>{
     '-hide_banner','-loglevel','error','-y',
     '-f','lavfi','-i','testsrc2=size=320x180:rate=25',
     '-f','lavfi','-i','sine=frequency=440:sample_rate=48000',
-    '-t','4','-c:v','libx264','-preset','ultrafast','-crf','28',
-    '-g','25','-sc_threshold','0','-pix_fmt','yuv420p',
+    '-t','4','-c:v','mpeg4','-q:v','5',
+    '-g','25','-pix_fmt','yuv420p',
     '-c:a','aac','-f','hls','-hls_time','1','-hls_list_size','0',
     '-hls_segment_type','fmp4','-hls_fmp4_init_filename','init.mp4',
     '-hls_segment_filename','chunk-%03d.m4s','video.m3u8'
