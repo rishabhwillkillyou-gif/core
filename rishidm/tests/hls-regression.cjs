@@ -25,6 +25,14 @@ const server=http.createServer((req,res)=>{
   if(url.pathname==='/media.m3u8') {res.writeHead(404);return res.end();}
   if(/^\/status\//.test(url.pathname)) {res.writeHead(Number(url.pathname.split('/')[2]));return res.end();}
   if(url.pathname==='/encrypted.m3u8') return res.end(media.replace('#EXTINF:', '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:'));
+  // Valid, unencrypted fMP4 per RFC 8216. Fragment URLs intentionally
+  // lack file extensions; EXT-X-MAP specifies the initialization section.
+  const fmp4 = '#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nchunks/0001\n#EXTINF:2,\nchunks/0002\n#EXT-X-ENDLIST\n';
+  if(url.pathname==='/fmp4-extensionless.m3u8') return res.end(fmp4);
+  if(url.pathname==='/fmp4-encrypted.m3u8') return res.end(fmp4.replace('#EXTINF:2,', '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:2,'));
+  if(url.pathname==='/fmp4-bad-map.m3u8') return res.end(fmp4.replace('URI="init.mp4"','URI="init.bin"'));
+  if(url.pathname==='/fmp4-no-map.m3u8') return res.end(fmp4.replace('#EXT-X-MAP:URI="init.mp4"\n',''));
+
   if(url.pathname==='/delayed.m3u8') return setTimeout(()=>res.end(master),40);
   res.end(media);
 });
@@ -60,6 +68,22 @@ async function detect(base,route,headers={}) {
       if(!baseline) assert.equal(getRishiHlsReasons(r.id)[`manifest-http-${status}`],1);
     }
     assert.equal((await detect(base,'/encrypted.m3u8')).list.length,0);
+    if(!baseline) {
+      const fmp4=await detect(base,'/fmp4-extensionless.m3u8');
+      assert.equal(fmp4.list.length,1,
+        'RFC 8216 EXT-X-MAP playlists with extensionless fragments must be offered: '+JSON.stringify(getRishiHlsReasons(fmp4.id)));
+      assert.equal(fmp4.list[0].type,'hls');
+      assert.equal(fmp4.list[0].extension,'mp4');
+      assert.deepEqual(fmp4.list[0].requestHeaders,{});
+      assert.equal(getRishiHlsReasons(fmp4.id)['extensionless-fmp4-map-accepted'],1);
+      assert.equal((await detect(base,'/fmp4-encrypted.m3u8')).list.length,0,
+        'Encrypted playlists must remain ineligible');
+      assert.equal((await detect(base,'/fmp4-bad-map.m3u8')).list.length,0,
+        'Unknown init container must not be guessed as MP4');
+      assert.equal((await detect(base,'/fmp4-no-map.m3u8')).list.length,0,
+        'Extensionless fragments without EXT-X-MAP remain unsupported');
+    }
+
     if(!baseline) {
       const r=await detect(base,'/anonymous.m3u8',{'Authorization':'Bearer test-only','Cookie':'fixture=1','X-Api-Key':'test-only','Range':'bytes=0-10','If-Modified-Since':'Wed, 21 Oct 2015 07:28:00 GMT'});
       assert.equal(r.list.length,1);
