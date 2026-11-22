@@ -156,6 +156,12 @@ internal class MediaServiceHandlerImpl(
         )
     override val queueData = _queueData.asStateFlow()
 
+    override val supportsRadioQueueControls: Boolean = true
+    private val manuallyQueuedVideoIds = mutableSetOf<String>()
+    private var radioRefreshInProgress = false
+    private var relatedRequests = 0
+    private var queueSession = 0L
+
     private val _controlState =
         MutableStateFlow<ControlState>(
             ControlState(
@@ -1115,6 +1121,134 @@ internal class MediaServiceHandlerImpl(
         }
     }
 
+    // In-place move: never seek, prepare, clear or restart the current item.
+    override suspend fun moveQueuedTrackNext(position: Int, expectedVideoId: String): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            val snapshot = _queueData.value
+            val tracks = snapshot.data.listTracks
+            val current = currentOrderIndex()
+            val timeline = player.getCurrentMediaTimeLine()
+            if (snapshot.queueState != QueueData.StateSource.STATE_INITIALIZED ||
+                _castState.value.isRemote ||
+                position !in tracks.indices ||
+                current !in tracks.indices ||
+                position == current ||
+                tracks[position].videoId != expectedVideoId ||
+                timeline.map { it.mediaId } != tracks.map { it.videoId }
+            ) return@withContext false
+
+            val target = if (position < current) current else current + 1
+            manuallyQueuedVideoIds.add(expectedVideoId)
+            if (position == target) return@withContext true
+
+            val reordered = tracks.toMutableList()
+            reordered.add(target, reordered.removeAt(position))
+            moveMediaItem(position, target)
+            _queueData.update { it.copy(data = it.data.copy(listTracks = reordered)) }
+            updateNextPreviousTrackAvailability()
+            mayBeSaveRecentSong()
+            true
+        }
+
+    // Fetch and rank off the old queue snapshot; only commit a complete, nonempty result
+    // if the current track, timeline and queue session still match. No player replacement.
+    override suspend fun refreshRadio(): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            if (radioRefreshInProgress ||
+                relatedRequests != 0 ||
+                _castState.value.isRemote ||
+                player.shuffleModeEnabled ||
+                _queueData.value.queueState != QueueData.StateSource.STATE_INITIALIZED
+            ) return@withContext false
+            radioRefreshInProgress = true
+            try {
+                if (dataStoreManager.endlessQueue.first() != TRUE) return@withContext false
+                val snapshot = _queueData.value
+                val session = queueSession
+                val current = currentOrderIndex()
+                val tracks = snapshot.data.listTracks
+                val seed = tracks.getOrNull(current) ?: return@withContext false
+                val timelineIds = player.getCurrentMediaTimeLine().map { it.mediaId }
+                if (timelineIds != tracks.map { it.videoId } ||
+                    player.currentMediaItem?.mediaId != seed.videoId
+                ) return@withContext false
+                val protected = manuallyQueuedVideoIds.toSet()
+                val retained = tracks.take(current + 1) +
+                    tracks.drop(current + 1).filter { it.videoId in protected }
+                val excluded = retained.map { it.videoId }.toHashSet()
+                val response = songRepository.getRelatedData(seed.videoId).lastOrNull()
+                if (response !is Resource.Success) return@withContext false
+                val allowExplicit = dataStoreManager.explicitContentEnabled.first() != FALSE
+                val fresh = response.data?.first.orEmpty()
+                    .filter { it.videoId.isNotBlank() && it.videoId !in excluded && (allowExplicit || !it.isExplicit) }
+                    .distinctBy { it.videoId }
+                if (fresh.isEmpty()) return@withContext false
+                val events = analyticsRepository.getPlaybackEventsByOffset(offset = 0, limit = 200)
+                    .lastOrNull().orEmpty()
+                val songIds = (events.asSequence().map { it.videoId } + fresh.asSequence().map { it.videoId })
+                    .distinct().toList()
+                val songsById = songRepository.getSongsByListVideoId(songIds)
+                    .lastOrNull().orEmpty().associateBy { it.videoId }
+                val taste = ListeningTasteBuilder.build(events, songsById)
+                val candidates = fresh.mapIndexed { index, track ->
+                    PersonalRadioRanker.Candidate(
+                        track = track,
+                        providerSimilarity = (1.0 - index.toDouble() / fresh.size).coerceAtLeast(0.35),
+                        providerRank = index,
+                    )
+                }
+                val ranked = PersonalRadioRanker().rank(seed = seed, candidates = candidates, taste = taste, limit = 15)
+                    .map { it.track }
+                if (ranked.isEmpty()) return@withContext false
+                // Construct every new media item before touching the live player.
+                val additions = ranked.map { track ->
+                    track.copy(thumbnails = track.thumbnails?.takeIf { it.isNotEmpty() }).toGenericMediaItem()
+                }
+                if (dataStoreManager.endlessQueue.first() != TRUE ||
+                    session != queueSession ||
+                    snapshot != _queueData.value ||
+                    protected != manuallyQueuedVideoIds ||
+                    relatedRequests != 0 ||
+                    player.shuffleModeEnabled ||
+                    _castState.value.isRemote ||
+                    current != currentOrderIndex() ||
+                    player.currentMediaItem?.mediaId != seed.videoId ||
+                    player.getCurrentMediaTimeLine().map { it.mediaId } != timelineIds
+                ) return@withContext false
+
+                // Commit without suspension. Append first so that even if the old tail is short,
+                // the playing item never becomes the end of the timeline during replacement.
+                _queueData.update { it.copy(queueState = QueueData.StateSource.STATE_INITIALIZING) }
+                for (item in additions) player.addMediaItem(item)
+                for (index in tracks.lastIndex downTo current + 1) {
+                    if (tracks[index].videoId !in protected) player.removeMediaItem(index)
+                }
+                _queueData.value = QueueData(
+                    queueState = QueueData.StateSource.STATE_INITIALIZED,
+                    data = snapshot.data.copy(
+                        listTracks = retained + ranked,
+                        firstPlayedTrack = seed,
+                        playlistId = "RDAMVM${seed.videoId}",
+                        playlistName = "\"${seed.title}\" Radio",
+                        playlistType = PlaylistType.RADIO,
+                        continuation = null,
+                    ),
+                )
+                player.albumTrackIds = emptySet()
+                _currentSongIndex.value = player.currentMediaItemIndex
+                updateNextPreviousTrackAvailability()
+                mayBeSaveRecentSong()
+                true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Logger.e(TAG, "Refresh Radio failed: ${error.message}")
+                false
+            } finally {
+                radioRefreshInProgress = false
+            }
+        }
+
     override fun toggleRadio() {
         coroutineScope.launch {
             val currentSong = nowPlayingState.value.songEntity ?: return@launch
@@ -1177,6 +1311,8 @@ internal class MediaServiceHandlerImpl(
     }
 
     override fun resetSongAndQueue() {
+        queueSession++
+        manuallyQueuedVideoIds.clear()
         player.clearMediaItems()
         _queueData.value = QueueData()
     }
@@ -1659,8 +1795,10 @@ internal class MediaServiceHandlerImpl(
 
     override fun getRelated(videoId: String) {
         if (queueData.value.queueState == QueueData.StateSource.STATE_INITIALIZING) return
+        relatedRequests++
         coroutineScope.launch {
-            songRepository.getRelatedData(videoId).collect { response ->
+            try {
+                songRepository.getRelatedData(videoId).collect { response ->
                 when (response) {
                     is Resource.Success -> {
                         val upstream = response.data?.first.orEmpty()
@@ -1744,11 +1882,16 @@ internal class MediaServiceHandlerImpl(
                         reorderShuffledQueue(player.getCurrentMediaTimeLine())
                     }
                 }
+                }
+            } finally {
+                relatedRequests--
             }
         }
     }
 
     override fun setQueueData(queueData: QueueData.Data) {
+        queueSession++
+        manuallyQueuedVideoIds.clear()
         _queueData.update {
             it.copy(
                 data = queueData,
@@ -1809,6 +1952,8 @@ internal class MediaServiceHandlerImpl(
     }
 
     override fun reset() {
+        queueSession++
+        manuallyQueuedVideoIds.clear()
         _queueData.value = QueueData()
     }
 
@@ -1834,6 +1979,7 @@ internal class MediaServiceHandlerImpl(
         listTrack: ArrayList<Track>,
         isAddToQueue: Boolean,
     ) {
+        if (isAddToQueue) manuallyQueuedVideoIds.addAll(listTrack.map { it.videoId })
         Logger.d("Queue", listTrack.map { it.title }.toString())
         _queueData.update {
             it.copy(
@@ -2203,6 +2349,7 @@ internal class MediaServiceHandlerImpl(
     }
 
     override suspend fun playNext(track: Track) {
+        manuallyQueuedVideoIds.add(track.videoId)
         _queueData.update {
             it.copy(
                 queueState = QueueData.StateSource.STATE_INITIALIZING,

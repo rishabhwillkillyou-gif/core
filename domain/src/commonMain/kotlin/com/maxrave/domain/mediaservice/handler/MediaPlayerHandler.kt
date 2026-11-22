@@ -40,6 +40,13 @@ interface MediaPlayerHandler {
 
     fun toggleRadio()
 
+    // Mobile opt-in: other platform handlers retain their existing behaviour.
+    val supportsRadioQueueControls: Boolean get() = false
+
+    suspend fun moveQueuedTrackNext(position: Int, expectedVideoId: String): Boolean = false
+
+    suspend fun refreshRadio(): Boolean = false
+
     fun toggleLike()
 
     fun like(liked: Boolean)
