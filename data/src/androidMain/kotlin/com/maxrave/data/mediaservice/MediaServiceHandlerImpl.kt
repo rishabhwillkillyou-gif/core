@@ -1172,9 +1172,9 @@ internal class MediaServiceHandlerImpl(
                 if (timelineIds != tracks.map { it.videoId } ||
                     player.currentMediaItem?.mediaId != seed.videoId
                 ) return@withContext false
-                val protected = manuallyQueuedVideoIds.toSet()
+                val preservedIds = manuallyQueuedVideoIds.toSet()
                 val retained = tracks.take(current + 1) +
-                    tracks.drop(current + 1).filter { it.videoId in protected }
+                    tracks.drop(current + 1).filter { it.videoId in preservedIds }
                 val excluded = retained.map { it.videoId }.toHashSet()
                 val response = songRepository.getRelatedData(seed.videoId).lastOrNull()
                 if (response !is Resource.Success) return@withContext false
@@ -1207,7 +1207,7 @@ internal class MediaServiceHandlerImpl(
                 if (dataStoreManager.endlessQueue.first() != TRUE ||
                     session != queueSession ||
                     snapshot != _queueData.value ||
-                    protected != manuallyQueuedVideoIds ||
+                    preservedIds != manuallyQueuedVideoIds ||
                     relatedRequests != 0 ||
                     player.shuffleModeEnabled ||
                     _castState.value.isRemote ||
@@ -1221,7 +1221,7 @@ internal class MediaServiceHandlerImpl(
                 _queueData.update { it.copy(queueState = QueueData.StateSource.STATE_INITIALIZING) }
                 for (item in additions) player.addMediaItem(item)
                 for (index in tracks.lastIndex downTo current + 1) {
-                    if (tracks[index].videoId !in protected) player.removeMediaItem(index)
+                    if (tracks[index].videoId !in preservedIds) player.removeMediaItem(index)
                 }
                 _queueData.value = QueueData(
                     queueState = QueueData.StateSource.STATE_INITIALIZED,
